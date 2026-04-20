@@ -61,6 +61,17 @@ function inferRecipient(draft) {
   return `info@${base || 'business'}.example`;
 }
 
+function buildGmailComposeUrl({ to, subject, body }) {
+  const params = new URLSearchParams({
+    view: 'cm',
+    fs: '1',
+    to: to || '',
+    su: subject || '',
+    body: body || '',
+  });
+  return `https://mail.google.com/mail/?${params.toString()}`;
+}
+
 function draftListHtml(drafts, selectedKey) {
   return drafts
     .map((draft) => {
@@ -111,7 +122,7 @@ function renderEmailWorkspace() {
         <h4>Generate Email</h4>
         <div class="email-top-actions">
           <button type="button" class="email-secondary-btn" data-email-action="discard">Discard</button>
-          <button type="button" class="email-primary-btn" data-email-action="mark-sent">Send Email</button>
+          <button type="button" class="email-primary-btn" data-email-action="open-gmail">Open in Gmail</button>
         </div>
       </div>
 
@@ -140,7 +151,7 @@ function renderEmailWorkspace() {
           <textarea readonly>${escapeHtml(selectedDraft.body || '')}</textarea>
           <div class="email-bottom-actions">
             <button type="button" class="email-secondary-btn" data-email-action="copy">Copy to Clipboard</button>
-            <button type="button" class="email-primary-btn" data-email-action="mark-sent">Send Email</button>
+            <button type="button" class="email-primary-btn" data-email-action="open-gmail">Open in Gmail</button>
           </div>
         </section>
       </div>
@@ -391,7 +402,7 @@ document.getElementById('emails-content').addEventListener('click', async (event
     selectedEmailDraftKey = emailDraftsByKey.size ? Array.from(emailDraftsByKey.keys())[0] : '';
     renderEmailWorkspace();
     document.getElementById('run-status').textContent = 'Draft removed from view (local only).';
-  } else if (action === 'mark-sent') {
+  } else if (action === 'open-gmail') {
     const selectedDraft = emailDraftsByKey.get(selectedEmailDraftKey);
     if (!selectedDraft) return;
     const recipientInput = document.getElementById('email-recipient-input');
@@ -400,24 +411,18 @@ document.getElementById('emails-content').addEventListener('click', async (event
       document.getElementById('run-status').textContent = 'Recipient is required.';
       return;
     }
-    try {
-      const res = await fetch('/api/send-email', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          to,
-          subject: selectedDraft.subject || '',
-          body: selectedDraft.body || '',
-        }),
-      });
-      if (!res.ok) {
-        const payload = await res.json().catch(() => ({}));
-        throw new Error(payload.error || 'Failed to send email.');
-      }
-      document.getElementById('run-status').textContent = `Email sent to ${to}.`;
-    } catch (err) {
-      document.getElementById('run-status').textContent = err.message;
+    const gmailUrl = buildGmailComposeUrl({
+      to,
+      subject: selectedDraft.subject || '',
+      body: selectedDraft.body || '',
+    });
+    const popup = window.open(gmailUrl, '_blank', 'noopener,noreferrer');
+    if (!popup) {
+      document.getElementById('run-status').textContent =
+        'Popup blocked. Allow popups for this site to open Gmail compose.';
+      return;
     }
+    document.getElementById('run-status').textContent = 'Opened Gmail compose in a new tab.';
   }
 });
 
