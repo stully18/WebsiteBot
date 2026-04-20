@@ -1,7 +1,9 @@
 const {
   decodeGoogleOutboundUrl,
+  extractTrackingDestination,
   normalizeWebsiteUrl,
   pickWebsiteCandidate,
+  isLikelyBusinessWebsiteForLead,
 } = require('../../scrapers/google-maps');
 
 describe('google maps website helpers', () => {
@@ -20,12 +22,48 @@ describe('google maps website helpers', () => {
     expect(normalizeWebsiteUrl('https://maps.app.goo.gl/abcd')).toBe('');
   });
 
+  it('extracts target url from tracking ad links', () => {
+    const tracking =
+      '/aclk?sa=L&adurl=https%3A%2F%2Fcommunitydentalofhamilton.com%2Flanding&ctype=99';
+    expect(extractTrackingDestination(tracking)).toBe('https://communitydentalofhamilton.com/landing');
+    expect(normalizeWebsiteUrl(tracking)).toBe('https://communitydentalofhamilton.com/landing');
+  });
+
+  it('rejects tracking links that have no destination url', () => {
+    const tracking = '/aclk?sa=L&ctype=99';
+    expect(normalizeWebsiteUrl(tracking)).toBe('');
+  });
+
+  it('rejects direct aclk host links', () => {
+    const directAclk = 'https://aclk/?sa=L&ctype=99';
+    expect(normalizeWebsiteUrl(directAclk)).toBe('');
+  });
+
   it('picks the first valid candidate from a mixed list', () => {
     const result = pickWebsiteCandidate([
       'https://www.google.com/maps/place/foo',
+      '/aclk?sa=L&adurl=https%3A%2F%2Ffromad.example%2F',
       'https://www.google.com/url?q=https%3A%2F%2Fvalidsite.com',
       'https://othersite.com',
     ]);
-    expect(result).toBe('https://validsite.com/');
+    expect(result).toBe('https://fromad.example/');
+  });
+
+  it('accepts websites with domain matching business name tokens', () => {
+    expect(
+      isLikelyBusinessWebsiteForLead('https://www.primeomegafitness.com', {
+        name: 'Prime Omega Fitness',
+        address: 'Princeton NJ',
+      })
+    ).toBe(true);
+  });
+
+  it('rejects websites with unrelated domains', () => {
+    expect(
+      isLikelyBusinessWebsiteForLead('https://www.jerseyplumbingpros.com', {
+        name: 'Sai CPA Services',
+        address: 'Ewing NJ',
+      })
+    ).toBe(false);
   });
 });

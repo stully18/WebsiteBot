@@ -56,9 +56,37 @@ function decodeGoogleOutboundUrl(rawUrl) {
   }
 }
 
+function extractTrackingDestination(rawUrl) {
+  if (!rawUrl) return '';
+  const trimmed = rawUrl.trim();
+  const toParse = trimmed.startsWith('/') ? `https://www.google.com${trimmed}` : trimmed;
+  try {
+    const parsed = new URL(toParse);
+    const path = (parsed.pathname || '').toLowerCase();
+    const host = (parsed.hostname || '').toLowerCase();
+    const maybeTrackingPath = path.includes('/aclk') || path.includes('/url');
+    const maybeTrackingHost =
+      host.includes('googleadservices.com') ||
+      host.includes('doubleclick.net') ||
+      host.includes('googlesyndication.com');
+    if (!maybeTrackingPath && !maybeTrackingHost) return '';
+
+    const paramsToTry = ['adurl', 'url', 'q'];
+    for (const key of paramsToTry) {
+      const candidate = parsed.searchParams.get(key);
+      if (candidate) return candidate;
+    }
+    return '';
+  } catch {
+    return '';
+  }
+}
+
 function normalizeWebsiteUrl(rawUrl) {
-  const decoded = decodeGoogleOutboundUrl((rawUrl || '').trim());
+  const trackingTarget = extractTrackingDestination(rawUrl);
+  const decoded = decodeGoogleOutboundUrl(trackingTarget || (rawUrl || '').trim());
   if (!decoded) return '';
+  if (decoded.startsWith('/')) return '';
   const withProto = /^https?:\/\//i.test(decoded) ? decoded : `https://${decoded}`;
   try {
     const parsed = new URL(withProto);
@@ -68,7 +96,10 @@ function normalizeWebsiteUrl(rawUrl) {
       host.includes('googleusercontent.com') ||
       host.includes('g.page') ||
       host === 'maps.app.goo.gl' ||
-      host.endsWith('.google')
+      host.endsWith('.google') ||
+      host === 'aclk' ||
+      host === 'www.aclk' ||
+      !host.includes('.')
     ) {
       return '';
     }
@@ -84,6 +115,90 @@ function pickWebsiteCandidate(urls) {
     if (normalized) return normalized;
   }
   return '';
+}
+
+function tokenizeBusinessIdentity(value) {
+  return (value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter((token) => token.length >= 4);
+}
+
+function getRegisteredDomainParts(hostname) {
+  const host = (hostname || '').toLowerCase();
+  const parts = host.split('.').filter(Boolean);
+  if (parts.length < 2) return [];
+  const core = parts.slice(-2, -1)[0] || '';
+  return core
+    .split(/[^a-z0-9]/g)
+    .filter((token) => token.length >= 3);
+}
+
+function isLikelyBusinessWebsiteForLead(url, lead) {
+  if (!url) return false;
+  try {
+    const parsed = new URL(url);
+    const domainParts = getRegisteredDomainParts(parsed.hostname);
+    if (!domainParts.length) return false;
+    const mergedDomain = domainParts.join('');
+
+    const leadTokens = new Set([
+      ...tokenizeBusinessIdentity(lead.name),
+      ...tokenizeBusinessIdentity(lead.address),
+    ]);
+
+    if (!leadTokens.size) return false;
+    for (const token of leadTokens) {
+      if (domainParts.includes(token)) return true;
+      if (token.length >= 5 && mergedDomain.includes(token)) return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+function extractDomain(url) {
+  try {
+    return new URL(url).hostname.toLowerCase();
+  } catch {
+    return '';
+  }
+}
+
+async function discoverWebsiteViaSearch(page, lead) {
+  const queryParts = [lead.name || ''];
+  if (lead.address) queryParts.push(lead.address);
+  const query = queryParts.join(' ').trim();
+  if (!query) return '';
+
+  const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
+  await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+  await new Promise((r) => setTimeout(r, 400));
+
+  const searchCandidates = await page.evaluate(() => {
+    const urls = [];
+
+    // Prefer normal result links (<a><h3>...</h3></a>).
+    const organicAnchors = Array.from(document.querySelectorAll('a'));
+    for (const anchor of organicAnchors) {
+      if (!anchor.querySelector('h3')) continue;
+      const href = anchor.getAttribute('href') || '';
+      if (href) urls.push(href);
+    }
+
+    // Fallback to links in main results container.
+    const resultAnchors = Array.from(document.querySelectorAll('#search a[href]'));
+    for (const anchor of resultAnchors) {
+      const href = anchor.getAttribute('href') || '';
+      if (href) urls.push(href);
+    }
+
+    return urls;
+  });
+
+  return pickWebsiteCandidate(searchCandidates);
 }
 
 async function scrapeSearchTerm(page, searchTerm) {
@@ -199,9 +314,17 @@ async function discoverMissingWebsites(leads) {
 
   try {
     const updated = [];
+    const domainAssignments = new Map();
     for (const lead of leads) {
-      if ((lead.website || '').trim() || !(lead.mapsUrl || '').trim()) {
-        updated.push(lead);
+      const normalizedExistingWebsite = normalizeWebsiteUrl((lead.website || '').trim());
+      const hasValidExistingWebsite = Boolean(normalizedExistingWebsite);
+      const hasMapsUrl = Boolean((lead.mapsUrl || '').trim());
+
+      if (hasValidExistingWebsite || !hasMapsUrl) {
+        updated.push({
+          ...lead,
+          website: normalizedExistingWebsite || '',
+        });
         continue;
       }
 
@@ -237,13 +360,36 @@ async function discoverMissingWebsites(leads) {
           ...selectorCandidates,
           ...broadAnchorCandidates,
         ]);
+
+        // Second-pass fallback for stubborn cases: query by business identity.
+        if (
+          !discoveredWebsite ||
+          !isLikelyBusinessWebsiteForLead(discoveredWebsite, lead)
+        ) {
+          discoveredWebsite = await discoverWebsiteViaSearch(page, lead);
+        }
+
+        if (discoveredWebsite && !isLikelyBusinessWebsiteForLead(discoveredWebsite, lead)) {
+          discoveredWebsite = '';
+        }
+
+        if (discoveredWebsite) {
+          const domain = extractDomain(discoveredWebsite);
+          const assignedLead = domainAssignments.get(domain);
+          if (assignedLead && assignedLead !== (lead.name || '').trim().toLowerCase()) {
+            // Avoid assigning the same domain to unrelated businesses in one run.
+            discoveredWebsite = '';
+          } else if (domain) {
+            domainAssignments.set(domain, (lead.name || '').trim().toLowerCase());
+          }
+        }
       } catch (err) {
         console.warn(`  Website discovery failed for ${lead.name}: ${err.message}`);
       }
 
       updated.push({
         ...lead,
-        website: discoveredWebsite || lead.website || '',
+        website: discoveredWebsite || normalizedExistingWebsite || '',
       });
       if (discoveredWebsite) {
         console.log(`  Website found for ${lead.name}: ${discoveredWebsite}`);
@@ -260,6 +406,8 @@ module.exports = {
   scrapeLeads,
   discoverMissingWebsites,
   decodeGoogleOutboundUrl,
+  extractTrackingDestination,
   normalizeWebsiteUrl,
   pickWebsiteCandidate,
+  isLikelyBusinessWebsiteForLead,
 };

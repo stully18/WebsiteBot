@@ -23,7 +23,9 @@ afterAll(() => {
 
 afterEach(() => {
   const draftsPath = path.join(TEST_DIR, 'email-drafts.json');
+  const trashedPath = path.join(TEST_DIR, 'trashed-leads.json');
   if (fs.existsSync(draftsPath)) fs.unlinkSync(draftsPath);
+  if (fs.existsSync(trashedPath)) fs.unlinkSync(trashedPath);
 });
 
 describe('parseCsv', () => {
@@ -55,6 +57,14 @@ describe('GET /api/leads', () => {
 
   it('returns empty array when leads.csv does not exist', async () => {
     const app = createApp(path.join(__dirname, 'nonexistent'));
+    const res = await request(app).get('/api/leads');
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual([]);
+  });
+
+  it('hides trashed leads from API results', async () => {
+    fs.writeFileSync(path.join(TEST_DIR, 'trashed-leads.json'), JSON.stringify(["joe's pizza|princeton nj"]));
+    const app = createApp(TEST_DIR);
     const res = await request(app).get('/api/leads');
     expect(res.status).toBe(200);
     expect(res.body).toEqual([]);
@@ -105,6 +115,36 @@ describe('email draft endpoints', () => {
     expect(draftsRes.status).toBe(200);
     expect(draftsRes.body.length).toBe(1);
     expect(draftsRes.body[0].businessName).toBe("Joe's Pizza");
+  });
+
+  it('can move a lead to trash', async () => {
+    const app = createApp(TEST_DIR);
+    const trashRes = await request(app).post('/api/leads/trash').send({
+      businessName: "Joe's Pizza",
+      address: 'Princeton NJ',
+    });
+    expect(trashRes.status).toBe(201);
+
+    const leadsRes = await request(app).get('/api/leads');
+    expect(leadsRes.body).toEqual([]);
+  });
+});
+
+describe('send email endpoint', () => {
+  it('sends email via configured transport wrapper', async () => {
+    const sendMail = jest.fn().mockResolvedValue({ messageId: 'abc123' });
+    const app = createApp(TEST_DIR, { sendMail });
+    const res = await request(app).post('/api/send-email').send({
+      to: 'test@example.com',
+      subject: 'Hello',
+      body: 'Body text',
+    });
+    expect(res.status).toBe(202);
+    expect(sendMail).toHaveBeenCalledWith({
+      to: 'test@example.com',
+      subject: 'Hello',
+      body: 'Body text',
+    });
   });
 });
 
