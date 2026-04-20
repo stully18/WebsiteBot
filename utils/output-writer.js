@@ -29,10 +29,10 @@ function writeEmails(filePath, drafts) {
     fs.writeFileSync(filePath, '# Email Drafts\n\nNo qualifying leads found this run.\n', 'utf8');
     return;
   }
-  const sections = drafts.map(
-    (draft) =>
-      `## ${draft.businessName} — ${draft.address}\n\n**Subject:** ${draft.subject}\n\n**Email:**\n\n${draft.body}\n`
-  );
+  const sections = drafts.map((draft) => {
+    const kindLabel = draft.draftKind === 'dm' ? 'DM (Instagram)' : 'Email';
+    return `## ${draft.businessName} — ${draft.address}\n\n**Type:** ${kindLabel}\n\n**Subject / label:** ${draft.subject}\n\n**Message:**\n\n${draft.body}\n`;
+  });
   const content = `# Email Drafts\n\nGenerated: ${new Date().toLocaleDateString()}\n\n---\n\n${sections.join('\n---\n\n')}`;
   fs.writeFileSync(filePath, content, 'utf8');
 }

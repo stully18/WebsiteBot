@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 const nodemailer = require('nodemailer');
-const { generateEmail } = require('../generators/email-generator');
+const { generateOutreachDraft } = require('../generators/email-generator');
 const { writeEmails } = require('../utils/output-writer');
 
 function parseCsv(content) {
@@ -42,6 +42,23 @@ function leadKeyFromDraft(draft) {
   return `${(draft.businessName || '').toLowerCase().trim()}|${(draft.address || '').toLowerCase().trim()}`;
 }
 
+function normalizeGeneratedDraft(rawDraft, lead, requestedKind) {
+  const businessName = (rawDraft?.businessName || lead?.['Business Name'] || '').trim();
+  const address = (rawDraft?.address || lead?.['Address'] || '').trim();
+  const safeKind = requestedKind === 'dm' ? 'dm' : 'email';
+  const safeBody = String(rawDraft?.body || '').trim();
+  const fallbackSubject =
+    safeKind === 'dm' ? 'Instagram DM' : `Website idea for ${businessName || 'local business'}`;
+
+  return {
+    businessName,
+    address,
+    draftKind: safeKind,
+    subject: safeKind === 'dm' ? 'Instagram DM' : String(rawDraft?.subject || fallbackSubject).trim(),
+    body: safeBody,
+  };
+}
+
 function readTrashedLeadKeys(trashedLeadsPath) {
   if (!fs.existsSync(trashedLeadsPath)) return [];
   try {
@@ -54,6 +71,16 @@ function readTrashedLeadKeys(trashedLeadsPath) {
 
 function writeTrashedLeadKeys(trashedLeadsPath, keys) {
   fs.writeFileSync(trashedLeadsPath, JSON.stringify(Array.from(new Set(keys)).sort(), null, 2), 'utf8');
+}
+
+function readEmailDrafts(draftsPath) {
+  if (!fs.existsSync(draftsPath)) return [];
+  try {
+    const parsed = JSON.parse(fs.readFileSync(draftsPath, 'utf8'));
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
 }
 
 function createApp(outputDir, options = {}) {
@@ -71,7 +98,10 @@ function createApp(outputDir, options = {}) {
         env: process.env,
       });
     });
-  const generateEmailForLead = options.generateEmailForLead || generateEmail;
+  const generateDraftForLead =
+    options.generateDraftForLead ||
+    ((businessName, address, websiteQuality, kind) =>
+      generateOutreachDraft(businessName, address, websiteQuality, kind));
   const writeEmailsFile = options.writeEmailsFile || writeEmails;
   const sendMail =
     options.sendMail ||
@@ -130,14 +160,24 @@ function createApp(outputDir, options = {}) {
   app.get('/api/email-drafts', (req, res) => {
     const draftsPath = path.join(outputDir, 'email-drafts.json');
     if (!fs.existsSync(draftsPath)) return res.json([]);
-    const content = fs.readFileSync(draftsPath, 'utf8');
-    try {
-      const trashedKeys = new Set(readTrashedLeadKeys(trashedLeadsPath));
-      const drafts = JSON.parse(content).filter((draft) => !trashedKeys.has(leadKeyFromDraft(draft)));
-      return res.json(drafts);
-    } catch {
-      return res.status(500).json({ error: 'email-drafts.json is invalid JSON' });
-    }
+    const trashedKeys = new Set(readTrashedLeadKeys(trashedLeadsPath));
+    const drafts = readEmailDrafts(draftsPath).filter((draft) => !trashedKeys.has(leadKeyFromDraft(draft)));
+    return res.json(drafts);
+  });
+
+  app.post('/api/email-drafts/delete', (req, res) => {
+    const businessName = (req.body?.businessName || '').trim();
+    const address = (req.body?.address || '').trim();
+    if (!businessName) return res.status(400).json({ error: 'businessName is required' });
+
+    const targetKey = `${businessName.toLowerCase()}|${address.toLowerCase()}`;
+    const draftsPath = path.join(outputDir, 'email-drafts.json');
+    const existingDrafts = readEmailDrafts(draftsPath);
+    const filteredDrafts = existingDrafts.filter((draft) => leadKeyFromDraft(draft) !== targetKey);
+
+    fs.writeFileSync(draftsPath, JSON.stringify(filteredDrafts, null, 2), 'utf8');
+    writeEmailsFile(path.join(outputDir, 'emails.md'), filteredDrafts);
+    return res.status(200).json({ deleted: true, remaining: filteredDrafts.length });
   });
 
   app.post('/api/leads/trash', (req, res) => {
@@ -175,15 +215,16 @@ function createApp(outputDir, options = {}) {
       return res.status(404).json({ error: 'Lead not found in leads.csv' });
     }
 
-    const draft = await generateEmailForLead(
+    const kind = req.body?.kind === 'dm' ? 'dm' : 'email';
+    const generatedDraft = await generateDraftForLead(
       lead['Business Name'] || '',
       lead['Address'] || '',
-      lead['Website Quality'] || ''
+      lead['Website Quality'] || '',
+      kind
     );
+    const draft = normalizeGeneratedDraft(generatedDraft, lead, kind);
     const draftsPath = path.join(outputDir, 'email-drafts.json');
-    const existingDrafts = fs.existsSync(draftsPath)
-      ? JSON.parse(fs.readFileSync(draftsPath, 'utf8'))
-      : [];
+    const existingDrafts = readEmailDrafts(draftsPath);
     const draftKey = `${draft.businessName.toLowerCase().trim()}|${(draft.address || '')
       .toLowerCase()
       .trim()}`;

@@ -96,25 +96,146 @@ describe('email draft endpoints', () => {
   });
 
   it('generates and stores a draft for a specific lead', async () => {
-    const mockGenerateEmail = jest.fn().mockResolvedValue({
+    const mockGenerateDraft = jest.fn().mockResolvedValue({
       businessName: "Joe's Pizza",
       address: 'Princeton NJ',
+      draftKind: 'email',
       subject: 'Website idea',
       body: 'Hi there!',
     });
-    const app = createApp(TEST_DIR, { generateEmailForLead: mockGenerateEmail });
+    const app = createApp(TEST_DIR, { generateDraftForLead: mockGenerateDraft });
 
     const res = await request(app).post('/api/generate-email').send({
       businessName: "Joe's Pizza",
       address: 'Princeton NJ',
     });
     expect(res.status).toBe(201);
-    expect(mockGenerateEmail).toHaveBeenCalled();
+    expect(mockGenerateDraft).toHaveBeenCalledWith("Joe's Pizza", 'Princeton NJ', 'poor', 'email');
 
     const draftsRes = await request(app).get('/api/email-drafts');
     expect(draftsRes.status).toBe(200);
     expect(draftsRes.body.length).toBe(1);
     expect(draftsRes.body[0].businessName).toBe("Joe's Pizza");
+  });
+
+  it('generates a DM draft when kind is dm', async () => {
+    const mockGenerateDraft = jest.fn().mockResolvedValue({
+      businessName: "Joe's Pizza",
+      address: 'Princeton NJ',
+      draftKind: 'dm',
+      subject: 'Instagram DM',
+      body: 'Hey! Mockup incoming.',
+    });
+    const app = createApp(TEST_DIR, { generateDraftForLead: mockGenerateDraft });
+
+    const res = await request(app).post('/api/generate-email').send({
+      businessName: "Joe's Pizza",
+      address: 'Princeton NJ',
+      kind: 'dm',
+    });
+    expect(res.status).toBe(201);
+    expect(mockGenerateDraft).toHaveBeenCalledWith("Joe's Pizza", 'Princeton NJ', 'poor', 'dm');
+    expect(res.body.draftKind).toBe('dm');
+  });
+
+  it('normalizes generated draft to requested DM kind', async () => {
+    const mockGenerateDraft = jest.fn().mockResolvedValue({
+      businessName: "Joe's Pizza",
+      address: 'Princeton NJ',
+      subject: 'Website idea',
+      body: 'This looked like an email',
+    });
+    const app = createApp(TEST_DIR, { generateDraftForLead: mockGenerateDraft });
+
+    const res = await request(app).post('/api/generate-email').send({
+      businessName: "Joe's Pizza",
+      address: 'Princeton NJ',
+      kind: 'dm',
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.draftKind).toBe('dm');
+    expect(res.body.subject).toBe('Instagram DM');
+
+    const draftsRes = await request(app).get('/api/email-drafts');
+    expect(draftsRes.status).toBe(200);
+    expect(draftsRes.body).toHaveLength(1);
+    expect(draftsRes.body[0].draftKind).toBe('dm');
+    expect(draftsRes.body[0].subject).toBe('Instagram DM');
+  });
+
+  it('deletes a draft from persistent storage', async () => {
+    const draftsPath = path.join(TEST_DIR, 'email-drafts.json');
+    fs.writeFileSync(
+      draftsPath,
+      JSON.stringify(
+        [
+          {
+            businessName: "Joe's Pizza",
+            address: 'Princeton NJ',
+            subject: 'Website idea',
+            body: 'Hi there!',
+          },
+        ],
+        null,
+        2
+      )
+    );
+    const app = createApp(TEST_DIR);
+
+    const deleteRes = await request(app).post('/api/email-drafts/delete').send({
+      businessName: "Joe's Pizza",
+      address: 'Princeton NJ',
+    });
+    expect(deleteRes.status).toBe(200);
+    expect(deleteRes.body.deleted).toBe(true);
+
+    const draftsRes = await request(app).get('/api/email-drafts');
+    expect(draftsRes.status).toBe(200);
+    expect(draftsRes.body).toEqual([]);
+  });
+
+  it('does not restore deleted drafts when generating a new one', async () => {
+    const draftsPath = path.join(TEST_DIR, 'email-drafts.json');
+    fs.writeFileSync(
+      draftsPath,
+      JSON.stringify(
+        [
+          {
+            businessName: "Joe's Pizza",
+            address: 'Princeton NJ',
+            subject: 'Old draft',
+            body: 'Old body',
+          },
+        ],
+        null,
+        2
+      )
+    );
+    const mockGenerateDraft = jest.fn().mockResolvedValue({
+      businessName: "Joe's Pizza",
+      address: 'Princeton NJ',
+      draftKind: 'email',
+      subject: 'New draft',
+      body: 'New body',
+    });
+    const app = createApp(TEST_DIR, { generateDraftForLead: mockGenerateDraft });
+
+    await request(app).post('/api/email-drafts/delete').send({
+      businessName: "Joe's Pizza",
+      address: 'Princeton NJ',
+    });
+
+    const regenRes = await request(app).post('/api/generate-email').send({
+      businessName: "Joe's Pizza",
+      address: 'Princeton NJ',
+    });
+    expect(regenRes.status).toBe(201);
+
+    const draftsRes = await request(app).get('/api/email-drafts');
+    expect(draftsRes.status).toBe(200);
+    expect(draftsRes.body).toHaveLength(1);
+    expect(draftsRes.body[0].subject).toBe('New draft');
+    expect(draftsRes.body[0].body).toBe('New body');
   });
 
   it('can move a lead to trash', async () => {

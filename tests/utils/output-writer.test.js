@@ -74,8 +74,24 @@ describe('writeEmails', () => {
     writeEmails(testPath, drafts);
     const content = fs.readFileSync(testPath, 'utf8');
     expect(content).toContain("## Joe's Pizza — 123 Main St, Princeton NJ");
-    expect(content).toContain("**Subject:** Website idea for Joe's Pizza");
+    expect(content).toContain('**Type:** Email');
+    expect(content).toContain("**Subject / label:** Website idea for Joe's Pizza");
     expect(content).toContain('Hi there, great place!');
+  });
+
+  it('labels DM drafts in markdown', () => {
+    const drafts = [
+      {
+        businessName: 'Local Gym',
+        address: 'Trenton NJ',
+        draftKind: 'dm',
+        subject: 'Instagram DM',
+        body: 'Hey! Love your site — sending a mockup pic.',
+      },
+    ];
+    writeEmails(testPath, drafts);
+    const content = fs.readFileSync(testPath, 'utf8');
+    expect(content).toContain('**Type:** DM (Instagram)');
   });
 
   it('writes a "no results" message when drafts array is empty', () => {

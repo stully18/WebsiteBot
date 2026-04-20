@@ -157,6 +157,29 @@ body {
   cursor: not-allowed;
 }
 
+.lead-email-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.email-btn-dm {
+  border-color: #5c3d8f;
+  background: #6f4cb8;
+}
+
+.dm-hint {
+  font-size: 0.84rem;
+  color: var(--muted);
+  margin-bottom: 10px;
+  line-height: 1.45;
+}
+
+.dm-textarea {
+  min-height: 200px;
+}
+
 #run-status {
   font-size: 0.8rem;
   padding: 7px 10px;

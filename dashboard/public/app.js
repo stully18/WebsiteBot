@@ -63,6 +63,7 @@ function inferRecipient(draft) {
 
 function buildGmailComposeUrl({ to, subject, body }) {
   const params = new URLSearchParams({
+    authuser: '1',
     view: 'cm',
     fs: '1',
     to: to || '',
@@ -81,7 +82,7 @@ function draftListHtml(drafts, selectedKey) {
         <button class="${activeClass}" data-draft-key="${encodeURIComponent(key)}" type="button">
           <span class="draft-item-name">${escapeHtml(draft.businessName)}</span>
           <span class="draft-item-meta">${escapeHtml(draft.address || '')}</span>
-          <span class="draft-item-quality">MANUAL REVIEW</span>
+          <span class="draft-item-quality">${draft.draftKind === 'dm' ? 'DM' : 'EMAIL'}</span>
         </button>
       `;
     })
@@ -115,32 +116,21 @@ function renderEmailWorkspace() {
   const selectedDraft = emailDraftsByKey.get(selectedEmailDraftKey) || drafts[0];
   const selectedLead = allLeads.find((lead) => leadKeyFromRow(lead) === selectedEmailDraftKey) || {};
   const recipient = inferRecipient(selectedDraft);
+  const isDm = selectedDraft.draftKind === 'dm';
 
-  container.innerHTML = `
-    <div class="email-workspace">
-      <div class="email-workspace-head">
-        <h4>Generate Email</h4>
-        <div class="email-top-actions">
-          <button type="button" class="email-secondary-btn" data-email-action="discard">Discard</button>
-          <button type="button" class="email-primary-btn" data-email-action="open-gmail">Open in Gmail</button>
-        </div>
-      </div>
-
-      <div class="email-main-grid">
-        <aside class="email-intelligence-panel">
-          <div class="email-list-head">Lead Intelligence</div>
-          <div class="draft-list">${draftListHtml(drafts, selectedEmailDraftKey)}</div>
-          <div class="lead-intel-card">
-            <h5>${escapeHtml(selectedDraft.businessName)}</h5>
-            <span class="lead-quality-pill is-mediocre">
-              MANUAL REVIEW
-            </span>
-            <p><strong>Address:</strong> ${escapeHtml(selectedDraft.address || 'Unknown')}</p>
-            <p><strong>Phone:</strong> ${escapeHtml(selectedLead['Phone'] || 'N/A')}</p>
-            <p><strong>Website:</strong> ${selectedLead['Website URL'] ? `<a href="${escapeHtml(selectedLead['Website URL'])}" target="_blank">Visit</a>` : 'None found'}</p>
+  const compositionBlock = isDm
+    ? `
+        <section class="email-composition-panel">
+          <div class="email-list-head">Instagram DM</div>
+          <p class="dm-hint">Casual copy — paste into Instagram, then attach your mockup photo.</p>
+          <label>Message</label>
+          <textarea readonly class="dm-textarea">${escapeHtml(selectedDraft.body || '')}</textarea>
+          <div class="email-bottom-actions">
+            <button type="button" class="email-primary-btn" data-email-action="copy">Copy DM</button>
           </div>
-        </aside>
-
+        </section>
+      `
+    : `
         <section class="email-composition-panel">
           <div class="email-list-head">Email Composition</div>
           <label>Recipient</label>
@@ -154,6 +144,34 @@ function renderEmailWorkspace() {
             <button type="button" class="email-primary-btn" data-email-action="open-gmail">Open in Gmail</button>
           </div>
         </section>
+      `;
+
+  container.innerHTML = `
+    <div class="email-workspace">
+      <div class="email-workspace-head">
+        <h4>${isDm ? 'DM draft' : 'Email draft'}</h4>
+        <div class="email-top-actions">
+          <button type="button" class="email-secondary-btn" data-email-action="discard">Discard</button>
+          ${isDm ? '' : '<button type="button" class="email-primary-btn" data-email-action="open-gmail">Open in Gmail</button>'}
+        </div>
+      </div>
+
+      <div class="email-main-grid">
+        <aside class="email-intelligence-panel">
+          <div class="email-list-head">Lead Intelligence</div>
+          <div class="draft-list">${draftListHtml(drafts, selectedEmailDraftKey)}</div>
+          <div class="lead-intel-card">
+            <h5>${escapeHtml(selectedDraft.businessName)}</h5>
+            <span class="lead-quality-pill is-mediocre">
+              ${isDm ? 'DM (social)' : 'Email'}
+            </span>
+            <p><strong>Address:</strong> ${escapeHtml(selectedDraft.address || 'Unknown')}</p>
+            <p><strong>Phone:</strong> ${escapeHtml(selectedLead['Phone'] || 'N/A')}</p>
+            <p><strong>Website:</strong> ${selectedLead['Website URL'] ? `<a href="${escapeHtml(selectedLead['Website URL'])}" target="_blank">Visit</a>` : 'None found'}</p>
+          </div>
+        </aside>
+
+        ${compositionBlock}
       </div>
     </div>
   `;
@@ -248,14 +266,23 @@ function renderLeads(leads) {
 
 function emailActionHtml(lead) {
   const key = leadKeyFromRow(lead);
-  const hasDraft = emailDraftsByKey.has(key);
-  const generating = generatingKeys.has(key);
-  const buttonLabel = generating ? 'Generating...' : hasDraft ? 'Regenerate' : 'Generate';
-  const statusLabel = hasDraft ? 'Draft saved' : 'No draft';
+  const draft = emailDraftsByKey.get(key);
+  const hasDraft = Boolean(draft);
+  const kind = draft?.draftKind || 'email';
+  const genEmail = generatingKeys.has(`${key}:email`);
+  const genDm = generatingKeys.has(`${key}:dm`);
+  const emailLabel = genEmail ? '…' : hasDraft && kind === 'email' ? 'Regen email' : 'Email';
+  const dmLabel = genDm ? '…' : hasDraft && kind === 'dm' ? 'Regen DM' : 'DM';
+  const statusLabel = hasDraft ? (kind === 'dm' ? 'Saved (DM)' : 'Saved (email)') : 'No draft';
   return `
-    <button class="email-btn" data-key="${encodeURIComponent(key)}" ${generating ? 'disabled' : ''}>
-      ${buttonLabel}
-    </button>
+    <div class="lead-email-actions">
+      <button class="email-btn" data-key="${encodeURIComponent(key)}" data-gen-kind="email" ${genEmail ? 'disabled' : ''}>
+        ${emailLabel}
+      </button>
+      <button class="email-btn email-btn-dm" data-key="${encodeURIComponent(key)}" data-gen-kind="dm" ${genDm ? 'disabled' : ''}>
+        ${dmLabel}
+      </button>
+    </div>
     <div class="email-status">${statusLabel}</div>
   `;
 }
@@ -273,9 +300,11 @@ function attachEmailHandlers() {
   document.querySelectorAll('.email-btn').forEach((btn) => {
     btn.addEventListener('click', async () => {
       const key = decodeURIComponent(btn.dataset.key || '');
+      const genKind = btn.dataset.genKind === 'dm' ? 'dm' : 'email';
+      const genId = `${key}:${genKind}`;
       const lead = allLeads.find((row) => leadKeyFromRow(row) === key);
       if (!lead) return;
-      generatingKeys.add(key);
+      generatingKeys.add(genId);
       applyFiltersAndSort();
       try {
         const res = await fetch('/api/generate-email', {
@@ -284,18 +313,20 @@ function attachEmailHandlers() {
           body: JSON.stringify({
             businessName: lead['Business Name'] || '',
             address: lead['Address'] || '',
+            kind: genKind,
           }),
         });
         if (!res.ok) {
           const payload = await res.json().catch(() => ({}));
           throw new Error(payload.error || 'Failed to generate email.');
         }
+        selectedEmailDraftKey = key;
         await loadEmailDrafts();
         await loadEmails();
       } catch (err) {
         document.getElementById('run-status').textContent = err.message;
       } finally {
-        generatingKeys.delete(key);
+        generatingKeys.delete(genId);
         applyFiltersAndSort();
       }
     });
@@ -389,19 +420,40 @@ document.getElementById('emails-content').addEventListener('click', async (event
   if (action === 'copy') {
     const selectedDraft = emailDraftsByKey.get(selectedEmailDraftKey);
     if (!selectedDraft) return;
-    const payload = `Subject: ${selectedDraft.subject || ''}\n\n${selectedDraft.body || ''}`;
+    const isDmDraft = selectedDraft.draftKind === 'dm';
+    const payload = isDmDraft
+      ? String(selectedDraft.body || '')
+      : `Subject: ${selectedDraft.subject || ''}\n\n${selectedDraft.body || ''}`;
     try {
       await navigator.clipboard.writeText(payload);
-      document.getElementById('run-status').textContent = 'Email copied to clipboard.';
+      document.getElementById('run-status').textContent = isDmDraft
+        ? 'DM copied to clipboard.'
+        : 'Email copied to clipboard.';
     } catch {
-      document.getElementById('run-status').textContent = 'Failed to copy email.';
+      document.getElementById('run-status').textContent = 'Failed to copy.';
     }
   } else if (action === 'discard') {
     if (!selectedEmailDraftKey) return;
-    emailDraftsByKey.delete(selectedEmailDraftKey);
-    selectedEmailDraftKey = emailDraftsByKey.size ? Array.from(emailDraftsByKey.keys())[0] : '';
-    renderEmailWorkspace();
-    document.getElementById('run-status').textContent = 'Draft removed from view (local only).';
+    const selectedDraft = emailDraftsByKey.get(selectedEmailDraftKey);
+    if (!selectedDraft) return;
+    try {
+      const res = await fetch('/api/email-drafts/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          businessName: selectedDraft.businessName || '',
+          address: selectedDraft.address || '',
+        }),
+      });
+      if (!res.ok) {
+        const payload = await res.json().catch(() => ({}));
+        throw new Error(payload.error || 'Failed to delete draft.');
+      }
+      await loadEmailDrafts();
+      document.getElementById('run-status').textContent = 'Draft deleted.';
+    } catch (err) {
+      document.getElementById('run-status').textContent = err.message;
+    }
   } else if (action === 'open-gmail') {
     const selectedDraft = emailDraftsByKey.get(selectedEmailDraftKey);
     if (!selectedDraft) return;

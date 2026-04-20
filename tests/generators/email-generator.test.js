@@ -1,4 +1,4 @@
-const { generateEmail, buildEmailPrompt } = require('../../generators/email-generator');
+const { generateEmail, generateDm, generateOutreachDraft, buildEmailPrompt, buildDmPrompt } = require('../../generators/email-generator');
 
 jest.mock('@google/generative-ai', () => ({
   GoogleGenerativeAI: jest.fn().mockImplementation(() => ({
@@ -60,7 +60,66 @@ describe('generateEmail', () => {
 
     const draft = await generateEmail('Broken Biz', 'Trenton NJ', 'poor');
     expect(draft.businessName).toBe('Broken Biz');
+    expect(draft.draftKind).toBe('email');
     expect(draft.subject).toContain('Broken Biz');
     expect(draft.body).toBeTruthy();
+  });
+});
+
+describe('buildDmPrompt', () => {
+  it('asks for casual short DM and mockup photo mention', () => {
+    const prompt = buildDmPrompt('Cafe X', 'Princeton NJ', 'mediocre');
+    expect(prompt).toContain('Instagram DM');
+    expect(prompt).toContain('mockup');
+    expect(prompt).toContain('Cafe X');
+  });
+});
+
+describe('generateDm', () => {
+  let mockGenerateContent;
+
+  beforeEach(() => {
+    mockGenerateContent = jest.fn();
+    GoogleGenerativeAI.mockImplementation(() => ({
+      getGenerativeModel: jest.fn().mockReturnValue({
+        generateContent: mockGenerateContent,
+      }),
+    }));
+  });
+
+  it('returns local DM template without API call', async () => {
+    const draft = await generateDm('Shop Y', 'Ewing NJ', 'poor');
+    expect(draft.draftKind).toBe('dm');
+    expect(draft.body).toContain('I’m Shane Tully');
+    expect(draft.body).toContain('mockup');
+    expect(draft.body).toContain('www.shanetully.dev');
+    expect(mockGenerateContent).not.toHaveBeenCalled();
+  });
+
+  it('keeps the approved no-tool wording', async () => {
+    const draft = await generateDm('Shop Y', 'Ewing NJ', 'poor');
+    expect(draft.body.toLowerCase()).not.toContain('google stitch');
+    expect(draft.body).toContain('mockup');
+  });
+});
+
+describe('generateOutreachDraft', () => {
+  let mockGenerateContent;
+
+  beforeEach(() => {
+    mockGenerateContent = jest.fn();
+    GoogleGenerativeAI.mockImplementation(() => ({
+      getGenerativeModel: jest.fn().mockReturnValue({
+        generateContent: mockGenerateContent,
+      }),
+    }));
+  });
+
+  it('routes to DM when kind is dm', async () => {
+    mockGenerateContent.mockResolvedValue({
+      response: { text: () => 'DM:\nShort casual note.' },
+    });
+    const draft = await generateOutreachDraft('Biz', 'Trenton', 'good', 'dm');
+    expect(draft.draftKind).toBe('dm');
   });
 });
