@@ -4,52 +4,94 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>WebsiteBot Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <header>
-    <h1>WebsiteBot Dashboard</h1>
-    <div id="stats"></div>
-  </header>
-
-  <nav>
-    <button class="tab-btn active" data-tab="leads">Leads</button>
-    <button class="tab-btn" data-tab="emails">Email Drafts</button>
-  </nav>
-
-  <main>
-    <section id="leads-tab" class="tab-content active">
-      <div class="toolbar">
-        <input type="text" id="search" placeholder="Filter by name or address..." />
-        <select id="quality-filter">
-          <option value="">All qualities</option>
-          <option value="no website">No website</option>
-          <option value="poor">Poor</option>
-          <option value="mediocre">Mediocre</option>
-          <option value="good">Good</option>
-        </select>
+  <div class="dashboard-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <h1>WebsiteBot</h1>
+        <p>Pipeline Command Center</p>
       </div>
-      <table id="leads-table">
-        <thead>
-          <tr>
-            <th>Business Name</th>
-            <th>Address</th>
-            <th>Phone</th>
-            <th>Website</th>
-            <th>Quality</th>
-            <th>Maps</th>
-          </tr>
-        </thead>
-        <tbody id="leads-body">
-          <tr><td colspan="6">Loading...</td></tr>
-        </tbody>
-      </table>
-    </section>
+      <nav class="side-nav">
+        <button class="tab-btn active" data-tab="logs">Live Logs</button>
+        <button class="tab-btn" data-tab="leads">Leads Database</button>
+        <button class="tab-btn" data-tab="emails">Email Drafts</button>
+      </nav>
+      <div class="sidebar-footer">
+        <span class="status-dot"></span>
+        <span>Local Engine Online</span>
+      </div>
+    </aside>
 
-    <section id="emails-tab" class="tab-content hidden">
-      <div id="emails-content">Loading...</div>
-    </section>
-  </main>
+    <main class="workspace">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow" id="topbar-eyebrow">Dashboard</p>
+          <h2 id="topbar-title">Live Logs</h2>
+        </div>
+      </header>
+
+      <section id="logs-tab" class="tab-content active">
+        <div class="logs-top">
+          <div id="run-controls">
+            <button id="run-pipeline-btn">Source Leads + Websites</button>
+            <span id="run-status">Idle</span>
+          </div>
+          <section class="metrics-row">
+            <article class="metric">
+              <span class="metric-label">Snapshot</span>
+              <p id="stats">0 leads</p>
+            </article>
+            <article class="metric">
+              <span class="metric-label">Mode</span>
+              <p>Scrape -> Discover Websites -> Manual Trash Review</p>
+            </article>
+          </section>
+        </div>
+        <div id="run-panel">
+          <h3>Pipeline Run Logs</h3>
+          <pre id="run-logs">No runs yet.</pre>
+        </div>
+      </section>
+
+      <section id="leads-tab" class="tab-content hidden">
+        <div class="section-head">
+          <h3>Leads Database</h3>
+          <p id="leads-count">0 visible leads</p>
+        </div>
+        <div class="toolbar">
+          <input type="text" id="search" placeholder="Filter by name or address..." />
+        </div>
+        <table id="leads-table">
+          <thead>
+            <tr>
+              <th>Business Name</th>
+              <th>Address</th>
+              <th>Phone</th>
+              <th>Website</th>
+              <th>Maps</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="leads-body">
+            <tr><td colspan="6">Loading...</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="emails-tab" class="tab-content hidden">
+        <div class="section-head">
+          <h3>Email Drafts</h3>
+          <p>Generated and manual drafts</p>
+        </div>
+        <div id="emails-content">Loading...</div>
+      </section>
+    </main>
+  </div>
 
   <script src="app.js"></script>
 </body>
