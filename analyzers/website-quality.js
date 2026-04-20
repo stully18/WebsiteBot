@@ -1,10 +1,7 @@
 require('dotenv').config();
-const { GoogleGenerativeAI } = require('@google/generative-ai');
 
-function getModel() {
-  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-  return genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
-}
+const OLLAMA_URL = 'http://localhost:11434/api/generate';
+const OLLAMA_MODEL = 'gemma3:4b';
 
 function buildAnalysisPrompt(html) {
   const truncated = html.slice(0, 8000);
@@ -15,7 +12,7 @@ Classify the website quality using this HTML:
 - "mediocre": functional but dated, no mobile responsiveness, stale content
 - "good": modern, clean, mobile-friendly
 
-Return ONLY one word: 'poor', 'mediocre', or 'good'
+Return ONLY one word: poor, mediocre, or good. No punctuation, no explanation.
 
 HTML:
 ${truncated}`;
@@ -35,12 +32,25 @@ async function scoreWebsite(url) {
 
   try {
     const prompt = buildAnalysisPrompt(html);
-    const result = await getModel().generateContent(prompt);
-    const score = result.response.text().trim().toLowerCase();
+    const response = await fetch(OLLAMA_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: OLLAMA_MODEL,
+        prompt,
+        stream: false,
+      }),
+      signal: AbortSignal.timeout(30000),
+    });
+    if (!response.ok) throw new Error(`Ollama error: ${response.status}`);
+    const data = await response.json();
+    const score = data.response.trim().toLowerCase();
     if (['poor', 'mediocre', 'good'].includes(score)) return score;
+    const firstWord = score.split(/\s/)[0].replace(/[^a-z]/g, '');
+    if (['poor', 'mediocre', 'good'].includes(firstWord)) return firstWord;
     return 'poor';
   } catch (err) {
-    console.warn(`  Gemini analysis failed for ${url}: ${err.message}`);
+    console.warn(`  Ollama analysis failed for ${url}: ${err.message}`);
     return 'mediocre'; // fail open — don't discard leads on API error
   }
 }

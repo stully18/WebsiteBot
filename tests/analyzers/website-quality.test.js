@@ -1,21 +1,11 @@
 const { scoreWebsite, buildAnalysisPrompt } = require('../../analyzers/website-quality');
 
-jest.mock('@google/generative-ai', () => ({
-  GoogleGenerativeAI: jest.fn().mockImplementation(() => ({
-    getGenerativeModel: jest.fn().mockReturnValue({
-      generateContent: jest.fn(),
-    }),
-  })),
-}));
-
-const { GoogleGenerativeAI } = require('@google/generative-ai');
-
 describe('buildAnalysisPrompt', () => {
   it('includes the HTML in the prompt', () => {
     const html = '<html><body><p>Hello</p></body></html>';
     const prompt = buildAnalysisPrompt(html);
     expect(prompt).toContain('<html>');
-    expect(prompt).toContain("Return ONLY one word: 'poor', 'mediocre', or 'good'");
+    expect(prompt).toContain('Return ONLY one word');
   });
 
   it('truncates HTML longer than 8000 chars', () => {
@@ -26,55 +16,62 @@ describe('buildAnalysisPrompt', () => {
 });
 
 describe('scoreWebsite', () => {
-  let mockGenerateContent;
+  function mockFetch(siteFetch, ollamaResponse) {
+    let callCount = 0;
+    global.fetch = jest.fn().mockImplementation(() => {
+      callCount++;
+      if (callCount === 1) return siteFetch;
+      return ollamaResponse;
+    });
+  }
 
-  beforeEach(() => {
-    mockGenerateContent = jest.fn();
-    GoogleGenerativeAI.mockImplementation(() => ({
-      getGenerativeModel: jest.fn().mockReturnValue({
-        generateContent: mockGenerateContent,
-      }),
-    }));
+  afterEach(() => {
+    global.fetch = undefined;
   });
 
   it('returns "no website" when url is empty', async () => {
     expect(await scoreWebsite('')).toBe('no website');
   });
 
-  it('returns "poor" when Gemini responds with "poor"', async () => {
-    global.fetch = jest.fn().mockResolvedValue({
-      ok: true,
-      text: async () => '<html><body>old site</body></html>',
-    });
-    mockGenerateContent.mockResolvedValue({ response: { text: () => 'poor' } });
+  it('returns "poor" when Ollama responds with "poor"', async () => {
+    mockFetch(
+      Promise.resolve({ ok: true, text: async () => '<html>old</html>' }),
+      Promise.resolve({ ok: true, json: async () => ({ response: 'poor' }) })
+    );
     expect(await scoreWebsite('http://example.com')).toBe('poor');
   });
 
-  it('returns "mediocre" when Gemini response has extra whitespace', async () => {
-    global.fetch = jest.fn().mockResolvedValue({
-      ok: true,
-      text: async () => '<html></html>',
-    });
-    mockGenerateContent.mockResolvedValue({ response: { text: () => '  mediocre  \n' } });
+  it('handles Ollama response with extra whitespace', async () => {
+    mockFetch(
+      Promise.resolve({ ok: true, text: async () => '<html></html>' }),
+      Promise.resolve({ ok: true, json: async () => ({ response: '  mediocre  \n' }) })
+    );
     expect(await scoreWebsite('http://example.com')).toBe('mediocre');
   });
 
-  it('returns "poor" on fetch failure (unreachable = poor)', async () => {
+  it('extracts first word when Ollama adds punctuation', async () => {
+    mockFetch(
+      Promise.resolve({ ok: true, text: async () => '<html></html>' }),
+      Promise.resolve({ ok: true, json: async () => ({ response: 'poor.' }) })
+    );
+    expect(await scoreWebsite('http://example.com')).toBe('poor');
+  });
+
+  it('returns "poor" on site fetch failure', async () => {
     global.fetch = jest.fn().mockRejectedValue(new Error('ECONNREFUSED'));
     expect(await scoreWebsite('http://broken.example.com')).toBe('poor');
   });
 
-  it('returns "poor" on non-200 response', async () => {
+  it('returns "poor" on non-200 site response', async () => {
     global.fetch = jest.fn().mockResolvedValue({ ok: false });
     expect(await scoreWebsite('http://example.com')).toBe('poor');
   });
 
-  it('returns "mediocre" (fail open) when Gemini throws', async () => {
-    global.fetch = jest.fn().mockResolvedValue({
-      ok: true,
-      text: async () => '<html></html>',
-    });
-    mockGenerateContent.mockRejectedValue(new Error('quota exceeded'));
+  it('returns "mediocre" (fail open) when Ollama throws', async () => {
+    mockFetch(
+      Promise.resolve({ ok: true, text: async () => '<html></html>' }),
+      Promise.reject(new Error('connection refused'))
+    );
     expect(await scoreWebsite('http://example.com')).toBe('mediocre');
   });
 });
