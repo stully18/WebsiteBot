@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WebsiteBot Dashboard</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <h1>WebsiteBot Dashboard</h1>
+    <div id="stats"></div>
+  </header>
+
+  <nav>
+    <button class="tab-btn active" data-tab="leads">Leads</button>
+    <button class="tab-btn" data-tab="emails">Email Drafts</button>
+  </nav>
+
+  <main>
+    <section id="leads-tab" class="tab-content active">
+      <div class="toolbar">
+        <input type="text" id="search" placeholder="Filter by name or address..." />
+        <select id="quality-filter">
+          <option value="">All qualities</option>
+          <option value="no website">No website</option>
+          <option value="poor">Poor</option>
+          <option value="mediocre">Mediocre</option>
+          <option value="good">Good</option>
+        </select>
+      </div>
+      <table id="leads-table">
+        <thead>
+          <tr>
+            <th>Business Name</th>
+            <th>Address</th>
+            <th>Phone</th>
+            <th>Website</th>
+            <th>Quality</th>
+            <th>Maps</th>
+          </tr>
+        </thead>
+        <tbody id="leads-body">
+          <tr><td colspan="6">Loading...</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="emails-tab" class="tab-content hidden">
+      <div id="emails-content">Loading...</div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
