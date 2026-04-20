@@ -7,15 +7,83 @@ const SEL = {
   feed: '[role="feed"]',
   resultCard: '[role="feed"] > div',
   nameInCard: '.fontHeadlineSmall',
-  detailName: 'h1',
+  detailName: 'h1.DUwDvf, h1',
   detailAddress: 'button[data-item-id="address"] .fontBodyMedium',
   detailPhone: 'button[data-item-id*="phone:tel:"] .fontBodyMedium',
   detailWebsite: 'a[data-item-id="authority"]',
 };
 
+const WEBSITE_FALLBACK_SELECTORS = [
+  'a[data-item-id="authority"]',
+  'a[data-item-id*="authority"]',
+  'a[aria-label*="Website"]',
+  'a[aria-label^="Website:"]',
+  'a[data-tooltip*="website"]',
+  'a[data-tooltip*="Website"]',
+];
+
 function isChain(name) {
   const lower = name.toLowerCase();
   return chainKeywords.some((kw) => lower.includes(kw));
+}
+
+function isInvalidBusinessName(name) {
+  if (!name) return true;
+  const normalized = name.toLowerCase().trim();
+  return [
+    'results',
+    'search results',
+    'google maps',
+    'maps',
+  ].includes(normalized);
+}
+
+function decodeGoogleOutboundUrl(rawUrl) {
+  if (!rawUrl) return '';
+  try {
+    const parsed = new URL(rawUrl);
+    const isGoogleDomain =
+      parsed.hostname.includes('google.com') || parsed.hostname.includes('googleusercontent.com');
+    if (isGoogleDomain) {
+      const qParam = parsed.searchParams.get('q');
+      const urlParam = parsed.searchParams.get('url');
+      const candidate = qParam || urlParam;
+      if (candidate) return candidate;
+    }
+    return rawUrl;
+  } catch {
+    return rawUrl;
+  }
+}
+
+function normalizeWebsiteUrl(rawUrl) {
+  const decoded = decodeGoogleOutboundUrl((rawUrl || '').trim());
+  if (!decoded) return '';
+  const withProto = /^https?:\/\//i.test(decoded) ? decoded : `https://${decoded}`;
+  try {
+    const parsed = new URL(withProto);
+    const host = parsed.hostname.toLowerCase();
+    if (
+      host.includes('google.com') ||
+      host.includes('googleusercontent.com') ||
+      host.includes('g.page') ||
+      host === 'maps.app.goo.gl' ||
+      host.endsWith('.google')
+    ) {
+      return '';
+    }
+    return parsed.toString();
+  } catch {
+    return '';
+  }
+}
+
+function pickWebsiteCandidate(urls) {
+  for (const rawUrl of urls || []) {
+    const normalized = normalizeWebsiteUrl(rawUrl);
+    if (normalized) return normalized;
+  }
+  return '';
 }
 
 async function scrapeSearchTerm(page, searchTerm) {
@@ -43,12 +111,18 @@ async function scrapeSearchTerm(page, searchTerm) {
     if (!hasContent) continue;
 
     try {
+      const cardName = await card
+        .$eval(SEL.nameInCard, (el) => el.textContent.trim())
+        .catch(() => '');
       await card.click();
       await page.waitForSelector(SEL.detailName, { timeout: 8000 });
       await new Promise((r) => setTimeout(r, 500));
 
-      const name = await page.$eval(SEL.detailName, (el) => el.textContent.trim()).catch(() => '');
-      if (!name || isChain(name)) continue;
+      let name = await page.$eval(SEL.detailName, (el) => el.textContent.trim()).catch(() => '');
+      if (isInvalidBusinessName(name) && !isInvalidBusinessName(cardName)) {
+        name = cardName;
+      }
+      if (!name || isInvalidBusinessName(name) || isChain(name)) continue;
 
       const address = await page
         .$eval(SEL.detailAddress, (el) => el.textContent.trim())
@@ -84,7 +158,7 @@ async function scrapeLeads(searchTerms) {
   });
 
   const allLeads = [];
-  const seenNames = new Set();
+  const seenLeadKeys = new Set();
 
   try {
     const page = await browser.newPage();
@@ -95,9 +169,9 @@ async function scrapeLeads(searchTerms) {
       try {
         const leads = await scrapeSearchTerm(page, term);
         for (const lead of leads) {
-          const key = lead.name.toLowerCase().trim();
-          if (!seenNames.has(key)) {
-            seenNames.add(key);
+          const key = `${lead.name.toLowerCase().trim()}|${(lead.address || '').toLowerCase().trim()}`;
+          if (!seenLeadKeys.has(key)) {
+            seenLeadKeys.add(key);
             allLeads.push(lead);
           }
         }
@@ -115,4 +189,77 @@ async function scrapeLeads(searchTerms) {
   return allLeads;
 }
 
-module.exports = { scrapeLeads };
+async function discoverMissingWebsites(leads) {
+  const browser = await puppeteer.launch({
+    headless: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox'],
+  });
+  const page = await browser.newPage();
+  await page.setViewport({ width: 1280, height: 900 });
+
+  try {
+    const updated = [];
+    for (const lead of leads) {
+      if ((lead.website || '').trim() || !(lead.mapsUrl || '').trim()) {
+        updated.push(lead);
+        continue;
+      }
+
+      let discoveredWebsite = '';
+      try {
+        await page.goto(lead.mapsUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+        await page.waitForSelector(SEL.detailName, { timeout: 8000 }).catch(() => null);
+        await new Promise((r) => setTimeout(r, 500));
+
+        const selectorCandidates = await page.evaluate((selectors) => {
+          const all = [];
+          for (const selector of selectors) {
+            const nodes = Array.from(document.querySelectorAll(selector));
+            for (const node of nodes) {
+              const href =
+                node.getAttribute('href') ||
+                node.getAttribute('data-href') ||
+                node.dataset?.href ||
+                '';
+              if (href) all.push(href);
+            }
+          }
+          return all;
+        }, WEBSITE_FALLBACK_SELECTORS);
+
+        const broadAnchorCandidates = await page.evaluate(() => {
+          return Array.from(document.querySelectorAll('a[href]'))
+            .map((el) => el.getAttribute('href') || '')
+            .filter(Boolean);
+        });
+
+        discoveredWebsite = pickWebsiteCandidate([
+          ...selectorCandidates,
+          ...broadAnchorCandidates,
+        ]);
+      } catch (err) {
+        console.warn(`  Website discovery failed for ${lead.name}: ${err.message}`);
+      }
+
+      updated.push({
+        ...lead,
+        website: discoveredWebsite || lead.website || '',
+      });
+      if (discoveredWebsite) {
+        console.log(`  Website found for ${lead.name}: ${discoveredWebsite}`);
+      }
+      await new Promise((r) => setTimeout(r, 400));
+    }
+    return updated;
+  } finally {
+    await browser.close();
+  }
+}
+
+module.exports = {
+  scrapeLeads,
+  discoverMissingWebsites,
+  decodeGoogleOutboundUrl,
+  normalizeWebsiteUrl,
+  pickWebsiteCandidate,
+};

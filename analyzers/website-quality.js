@@ -1,10 +1,13 @@
 require('dotenv').config();
 
 const OLLAMA_URL = 'http://localhost:11434/api/generate';
-const OLLAMA_MODEL = 'gemma3:4b';
+const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'gemma4:e2b';
+const WEBSITE_FETCH_TIMEOUT_MS = Number(process.env.WEBSITE_FETCH_TIMEOUT_MS || 8000);
+const OLLAMA_TIMEOUT_MS = Number(process.env.OLLAMA_TIMEOUT_MS || 120000);
+const MAX_HTML_CHARS = Number(process.env.WEBSITE_ANALYSIS_HTML_CHARS || 4000);
 
 function buildAnalysisPrompt(html) {
-  const truncated = html.slice(0, 8000);
+  const truncated = html.slice(0, MAX_HTML_CHARS);
   return `You are evaluating whether a small business website is modern or outdated.
 
 Classify the website quality using this HTML:
@@ -23,7 +26,7 @@ async function scoreWebsite(url) {
 
   let html;
   try {
-    const response = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    const response = await fetch(url, { signal: AbortSignal.timeout(WEBSITE_FETCH_TIMEOUT_MS) });
     if (!response.ok) return 'poor';
     html = await response.text();
   } catch {
@@ -40,7 +43,7 @@ async function scoreWebsite(url) {
         prompt,
         stream: false,
       }),
-      signal: AbortSignal.timeout(30000),
+      signal: AbortSignal.timeout(OLLAMA_TIMEOUT_MS),
     });
     if (!response.ok) throw new Error(`Ollama error: ${response.status}`);
     const data = await response.json();
@@ -50,6 +53,16 @@ async function scoreWebsite(url) {
     if (['poor', 'mediocre', 'good'].includes(firstWord)) return firstWord;
     return 'poor';
   } catch (err) {
+    const isTimeout =
+      err?.name === 'TimeoutError' ||
+      err?.name === 'AbortError' ||
+      String(err?.message || '').toLowerCase().includes('timeout');
+    if (isTimeout) {
+      console.warn(
+        `  Ollama analysis timed out for ${url} after ${OLLAMA_TIMEOUT_MS}ms (model ${OLLAMA_MODEL})`
+      );
+      return 'mediocre';
+    }
     console.warn(`  Ollama analysis failed for ${url}: ${err.message}`);
     return 'mediocre'; // fail open — don't discard leads on API error
   }
