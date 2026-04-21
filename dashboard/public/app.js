@@ -58,14 +58,13 @@ async function loadTriageData() {
   triagedSentLeads = await sentRes.json();
   const sentKeySet = new Set(triagedSentLeads.map((s) => s.key));
 
-  triageEmailLeads = allLeads.filter(
-    (l) => (l['Email'] || '').trim() && !sentKeySet.has(leadKeyFromRow(l))
-  );
+  triageEmailLeads = allLeads.filter((l) => (l['Email'] || '').trim());
+  triageEmailLeads.forEach((l) => { l._sent = sentKeySet.has(leadKeyFromRow(l)); });
+
   triagedSocialLeads = allLeads.filter(
     (l) =>
       !(l['Email'] || '').trim() &&
-      ((l['Instagram'] || '').trim() || (l['Facebook'] || '').trim()) &&
-      !sentKeySet.has(leadKeyFromRow(l))
+      ((l['Instagram'] || '').trim() || (l['Facebook'] || '').trim())
   );
 
   renderTriageEmailQueue();
@@ -105,17 +104,22 @@ function renderTriageEmailQueue() {
       const websiteHtml = lead['Website URL']
         ? `<a href="${escapeHtml(lead['Website URL'])}" target="_blank">Visit</a>${confidence === 'low' ? ' <span class="mismatch-warn" title="Website may not match business">⚠️</span>' : ''}`
         : '—';
-      return `<tr>
+      const sentBadge = lead._sent ? ' <span class="sent-badge">Sent</span>' : '';
+      const resendBtn = lead._sent
+        ? `<button class="resend-btn" data-resend-key="${escapeHtml(key)}">Resend</button>`
+        : '';
+      return `<tr class="${lead._sent ? 'triage-row-sent' : ''}">
         <td><input type="checkbox" class="triage-check" data-key="${escapeHtml(key)}" ${checked} /></td>
-        <td>${escapeHtml(lead['Business Name'])}</td>
+        <td>${escapeHtml(lead['Business Name'])}${sentBadge}</td>
         <td>${websiteHtml}</td>
         <td>${escapeHtml(lead['Email'])}</td>
-        <td><button class="trash-lead-btn triage-trash-btn" data-trash-key="${escapeHtml(key)}">Trash</button></td>
+        <td>${resendBtn}<button class="trash-lead-btn triage-trash-btn" data-trash-key="${escapeHtml(key)}">Trash</button></td>
       </tr>`;
     })
     .join('');
   attachTriageCheckHandlers();
   attachTriageTrashHandlers();
+  attachResendHandlers();
 }
 
 function renderTriageSocialQueue() {
@@ -208,6 +212,32 @@ function attachTriageTrashHandlers() {
         await loadTriageData();
       } catch (err) {
         document.getElementById('triage-send-status').textContent = err.message;
+      }
+    });
+  });
+}
+
+function attachResendHandlers() {
+  document.querySelectorAll('.resend-btn').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const key = btn.dataset.resendKey || '';
+      const statusEl = document.getElementById('triage-send-status');
+      btn.disabled = true;
+      btn.textContent = 'Sending...';
+      try {
+        const res = await fetch('/api/leads/send-batch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ leadKeys: [key] }),
+        });
+        const { results } = await res.json();
+        const ok = results[0]?.success;
+        statusEl.textContent = ok ? 'Resent successfully.' : `Resend failed: ${results[0]?.error}`;
+        await loadTriageData();
+      } catch (err) {
+        statusEl.textContent = `Resend failed: ${err.message}`;
+        btn.disabled = false;
+        btn.textContent = 'Resend';
       }
     });
   });

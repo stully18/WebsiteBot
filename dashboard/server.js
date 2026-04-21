@@ -243,10 +243,11 @@ function createApp(outputDir, options = {}) {
     }
 
     const kind = req.body?.kind === 'dm' ? 'dm' : 'email';
+    const derivedQuality = (lead['Website Quality'] || '') || ((lead['Website URL'] || '').trim() ? 'poor' : 'no website');
     const generatedDraft = await generateDraftForLead(
       lead['Business Name'] || '',
       lead['Address'] || '',
-      lead['Website Quality'] || '',
+      derivedQuality,
       kind
     );
     const draft = normalizeGeneratedDraft(generatedDraft, lead, kind);
@@ -315,10 +316,11 @@ function createApp(outputDir, options = {}) {
       }
 
       try {
+        const derivedQuality = (lead['Website Quality'] || '') || ((lead['Website URL'] || '').trim() ? 'poor' : 'no website');
         const draft = await generateDraftForLead(
           lead['Business Name'] || '',
           lead['Address'] || '',
-          lead['Website Quality'] || '',
+          derivedQuality,
           'email'
         );
         if (signature === null) {

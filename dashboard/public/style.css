@@ -627,3 +627,19 @@ a:hover {
 
 .triage-social-panel .triage-queue-header h4 { opacity: 0.75; }
 .triage-sent-panel .triage-queue-header h4 { opacity: 0.6; }
+
+.triage-row-sent { opacity: 0.55; }
+.resend-btn { font-size: 0.78rem; padding: 0.25rem 0.5rem; cursor: pointer; border: 1px solid #7eb8f7; color: #7eb8f7; background: transparent; border-radius: 3px; margin-right: 4px; }
+.sent-badge {
+  display: inline-block;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  background: #2a4a2a;
+  color: #6fcf6f;
+  border-radius: 3px;
+  padding: 1px 5px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
