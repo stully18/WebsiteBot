@@ -58,6 +58,25 @@ describe('writeCsv', () => {
     const content = fs.readFileSync(testPath, 'utf8');
     expect(content).toContain('"Smith, Jones & Co"');
   });
+
+  it('includes Email, Instagram, Facebook columns', () => {
+    const leads = [{
+      name: 'Acme Roofing',
+      address: 'Princeton NJ',
+      phone: '6095550000',
+      website: 'https://acmeroofing.com',
+      websiteQuality: '',
+      mapsUrl: '',
+      email: 'hello@acmeroofing.com',
+      instagram: 'https://instagram.com/acmeroofing',
+      facebook: '',
+    }];
+    writeCsv(testPath, leads);
+    const content = fs.readFileSync(testPath, 'utf8');
+    expect(content).toContain('Business Name,Address,Phone,Website URL,Website Quality,Google Maps Link,Email,Instagram,Facebook');
+    expect(content).toContain('hello@acmeroofing.com');
+    expect(content).toContain('https://instagram.com/acmeroofing');
+  });
 });
 
 describe('writeEmails', () => {

@@ -10,7 +10,7 @@ function csvEscape(value) {
 }
 
 function writeCsv(filePath, leads) {
-  const header = 'Business Name,Address,Phone,Website URL,Website Quality,Google Maps Link';
+  const header = 'Business Name,Address,Phone,Website URL,Website Quality,Google Maps Link,Email,Instagram,Facebook';
   const rows = leads.map((lead) =>
     [
       csvEscape(lead.name),
@@ -19,6 +19,9 @@ function writeCsv(filePath, leads) {
       csvEscape(lead.website),
       csvEscape(lead.websiteQuality),
       csvEscape(lead.mapsUrl),
+      csvEscape(lead.email || ''),
+      csvEscape(lead.instagram || ''),
+      csvEscape(lead.facebook || ''),
     ].join(',')
   );
   fs.writeFileSync(filePath, [header, ...rows].join('\n'), 'utf8');
