@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const { searchTerms, outputDir, focusFilters } = require('./config');
 const { scrapeLeads, discoverMissingWebsites } = require('./scrapers/google-maps');
+const { scrapeContactInfoBatch } = require('./scrapers/contact-scraper');
 const { writeCsv } = require('./utils/output-writer');
 const { filterLeadsForFocus } = require('./utils/lead-filters');
 
@@ -71,6 +72,9 @@ function loadExistingLeads(csvPath) {
     website: row['Website URL'] || '',
     websiteQuality: row['Website Quality'] || '',
     mapsUrl: row['Google Maps Link'] || '',
+    email: row['Email'] || '',
+    instagram: row['Instagram'] || '',
+    facebook: row['Facebook'] || '',
   }));
 }
 
@@ -138,6 +142,30 @@ async function run() {
   }
   console.log(`Focused working set: ${focusedRawLeads.length} leads\n`);
 
+  let contactLeads = focusedRawLeads;
+  if (STAGE === 'full' || STAGE === 'contacts') {
+    console.log('Stage 3: Scraping contact info from websites...');
+    contactLeads = await scrapeContactInfoBatch(focusedRawLeads);
+    saveJson(rawLeadsPath, contactLeads);
+    const withEmail = contactLeads.filter((l) => l.email).length;
+    console.log(`Contact scraping complete. ${withEmail}/${contactLeads.length} leads have email.\n`);
+  }
+
+  if (STAGE === 'contacts') {
+    const merged = mergeLeadsByKey(
+      filteredExistingLeads,
+      contactLeads.map((lead) => ({ ...lead, websiteQuality: lead.websiteQuality || '' }))
+    );
+    writeCsv(csvPath, merged);
+    saveJson(scoredLeadsPath, merged);
+    const elapsed = ((Date.now() - start) / 1000).toFixed(1);
+    console.log(`\n=== Done in ${elapsed}s ===`);
+    console.log(`Raw leads JSON: ${rawLeadsPath}`);
+    console.log(`Scored JSON:    ${scoredLeadsPath}`);
+    console.log(`Leads CSV:      ${csvPath} (${merged.length} leads total)`);
+    return;
+  }
+
   if (STAGE === 'scrape') {
     const merged = mergeLeadsByKey(
       filteredExistingLeads,
@@ -177,7 +205,7 @@ async function run() {
 
   const merged = mergeLeadsByKey(
     filteredExistingLeads,
-    focusedRawLeads.map((lead) => ({
+    contactLeads.map((lead) => ({
       ...lead,
       websiteQuality: '',
     }))
