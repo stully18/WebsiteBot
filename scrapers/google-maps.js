@@ -135,28 +135,37 @@ function getRegisteredDomainParts(hostname) {
     .filter((token) => token.length >= 3);
 }
 
-function isLikelyBusinessWebsiteForLead(url, lead) {
-  if (!url) return false;
+function getWebsiteConfidence(url, lead) {
+  if (!url) return 'unknown';
   try {
     const parsed = new URL(url);
     const domainParts = getRegisteredDomainParts(parsed.hostname);
-    if (!domainParts.length) return false;
+    if (!domainParts.length) return 'low';
     const mergedDomain = domainParts.join('');
 
-    const leadTokens = new Set([
+    const leadTokens = [
       ...tokenizeBusinessIdentity(lead.name),
       ...tokenizeBusinessIdentity(lead.address),
-    ]);
+    ];
+    if (!leadTokens.length) return 'unknown';
 
-    if (!leadTokens.size) return false;
+    let matchCount = 0;
     for (const token of leadTokens) {
-      if (domainParts.includes(token)) return true;
-      if (token.length >= 5 && mergedDomain.includes(token)) return true;
+      const matched =
+        domainParts.includes(token) || (token.length >= 5 && mergedDomain.includes(token));
+      if (matched) {
+        matchCount++;
+        if (token.length >= 7) return 'high';
+      }
     }
-    return false;
+    return matchCount >= 2 ? 'high' : 'low';
   } catch {
-    return false;
+    return 'unknown';
   }
+}
+
+function isLikelyBusinessWebsiteForLead(url, lead) {
+  return getWebsiteConfidence(url, lead) === 'high';
 }
 
 function extractDomain(url) {
@@ -410,4 +419,5 @@ module.exports = {
   normalizeWebsiteUrl,
   pickWebsiteCandidate,
   isLikelyBusinessWebsiteForLead,
+  getWebsiteConfidence,
 };

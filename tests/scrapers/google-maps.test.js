@@ -4,6 +4,7 @@ const {
   normalizeWebsiteUrl,
   pickWebsiteCandidate,
   isLikelyBusinessWebsiteForLead,
+  getWebsiteConfidence,
 } = require('../../scrapers/google-maps');
 
 describe('google maps website helpers', () => {
@@ -65,5 +66,47 @@ describe('google maps website helpers', () => {
         address: 'Ewing NJ',
       })
     ).toBe(false);
+  });
+});
+
+describe('getWebsiteConfidence', () => {
+  it('returns high when domain has a strong 7+ char token match', () => {
+    expect(
+      getWebsiteConfidence('https://www.primeomegafitness.com', {
+        name: 'Prime Omega Fitness',
+        address: 'Princeton NJ',
+      })
+    ).toBe('high');
+  });
+
+  it('returns high when domain has 2 shorter token matches', () => {
+    expect(
+      getWebsiteConfidence('https://www.acmeplumbing.com', {
+        name: 'Acme Plumbing',
+        address: 'Princeton NJ',
+      })
+    ).toBe('high');
+  });
+
+  it('returns low when only 1 short token matches', () => {
+    expect(
+      getWebsiteConfidence('https://www.acmeservices.com', {
+        name: 'Acme Roofing',
+        address: 'Ewing NJ',
+      })
+    ).toBe('low');
+  });
+
+  it('returns low when no tokens match', () => {
+    expect(
+      getWebsiteConfidence('https://www.jerseyplumbingpros.com', {
+        name: 'Sai CPA Services',
+        address: 'Ewing NJ',
+      })
+    ).toBe('low');
+  });
+
+  it('returns unknown for empty url', () => {
+    expect(getWebsiteConfidence('', { name: 'Any', address: 'NJ' })).toBe('unknown');
   });
 });
