@@ -596,3 +596,34 @@ a:hover {
     border-bottom: 1px solid var(--line);
   }
 }
+
+/* Triage Tab */
+.triage-head { display: flex; align-items: center; justify-content: space-between; }
+.triage-auth-status { font-size: 0.8rem; }
+.auth-ok { color: #4caf50; font-weight: 600; }
+.auth-warn { color: #ff9800; font-weight: 600; }
+.auth-warn a { color: inherit; }
+
+.triage-panel { margin-bottom: 2.5rem; }
+.triage-queue-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.75rem; }
+.triage-queue-header h4 { margin: 0; font-size: 1rem; text-transform: uppercase; letter-spacing: 0.05em; }
+.queue-sub { font-size: 0.75rem; font-weight: 400; opacity: 0.6; margin-left: 0.5rem; }
+
+.triage-controls { display: flex; gap: 0.5rem; }
+.triage-controls button { padding: 0.3rem 0.7rem; font-size: 0.8rem; cursor: pointer; border: 1px solid currentColor; background: transparent; border-radius: 4px; }
+.send-all-btn { background: #4caf50 !important; color: #fff !important; border-color: #4caf50 !important; font-weight: 600; }
+.send-all-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.triage-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+.triage-table th { text-align: left; padding: 0.4rem 0.6rem; border-bottom: 2px solid rgba(0,0,0,0.1); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.6; }
+.triage-table td { padding: 0.5rem 0.6rem; border-bottom: 1px solid rgba(0,0,0,0.05); vertical-align: middle; }
+.triage-table tr:hover td { background: rgba(0,0,0,0.02); }
+
+.triage-status-msg { font-size: 0.82rem; margin: 0.5rem 0; min-height: 1.2em; opacity: 0.8; }
+.mismatch-warn { cursor: help; font-size: 0.9em; }
+
+.copy-dm-btn { font-size: 0.78rem; padding: 0.25rem 0.5rem; cursor: pointer; border: 1px solid currentColor; background: transparent; border-radius: 3px; margin-right: 0.3rem; }
+.triage-trash-btn { font-size: 0.78rem; padding: 0.25rem 0.5rem; cursor: pointer; border: 1px solid #e57373; color: #e57373; background: transparent; border-radius: 3px; }
+
+.triage-social-panel .triage-queue-header h4 { opacity: 0.75; }
+.triage-sent-panel .triage-queue-header h4 { opacity: 0.6; }

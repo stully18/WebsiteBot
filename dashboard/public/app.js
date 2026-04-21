@@ -3,8 +3,13 @@ let runStatusInterval = null;
 let emailDraftsByKey = new Map();
 let generatingKeys = new Set();
 let selectedEmailDraftKey = '';
+let triageEmailLeads = [];
+let triagedSentLeads = [];
+let triageCheckedKeys = new Set();
+let triagedSocialLeads = [];
 
 const tabHeaderMeta = {
+  triage: { eyebrow: 'Outreach', title: 'Triage & Send' },
   logs: { eyebrow: 'Pipeline', title: 'Live Logs' },
   leads: { eyebrow: 'Database', title: 'Leads Database' },
   emails: { eyebrow: 'Outreach', title: 'Email Drafts' },
@@ -42,6 +47,170 @@ async function loadEmailDrafts() {
     selectedEmailDraftKey = emailDraftsByKey.size ? Array.from(emailDraftsByKey.keys())[0] : '';
   }
   renderEmailWorkspace();
+}
+
+async function loadTriageData() {
+  const [leadsRes, sentRes] = await Promise.all([
+    fetch('/api/leads'),
+    fetch('/api/leads/sent'),
+  ]);
+  allLeads = await leadsRes.json();
+  triagedSentLeads = await sentRes.json();
+  const sentKeySet = new Set(triagedSentLeads.map((s) => s.key));
+
+  triageEmailLeads = allLeads.filter(
+    (l) => (l['Email'] || '').trim() && !sentKeySet.has(leadKeyFromRow(l))
+  );
+  triagedSocialLeads = allLeads.filter(
+    (l) =>
+      !(l['Email'] || '').trim() &&
+      ((l['Instagram'] || '').trim() || (l['Facebook'] || '').trim()) &&
+      !sentKeySet.has(leadKeyFromRow(l))
+  );
+
+  renderTriageEmailQueue();
+  renderTriageSocialQueue();
+  renderTriageSent();
+  renderStats();
+}
+
+async function checkGmailAuthStatus() {
+  try {
+    const res = await fetch('/api/auth/gmail/status');
+    const { authenticated } = await res.json();
+    const el = document.getElementById('triage-auth-status');
+    if (!el) return;
+    if (authenticated) {
+      el.innerHTML = '<span class="auth-ok">Gmail connected</span>';
+    } else {
+      el.innerHTML = '<span class="auth-warn">Gmail not connected — <a href="/auth/gmail" target="_blank">Connect Gmail</a></span>';
+    }
+  } catch {
+    // ignore
+  }
+}
+
+function renderTriageEmailQueue() {
+  const tbody = document.getElementById('email-queue-body');
+  if (!tbody) return;
+  if (!triageEmailLeads.length) {
+    tbody.innerHTML = '<tr><td colspan="5">No leads with email addresses. Run the pipeline first.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = triageEmailLeads
+    .map((lead) => {
+      const key = leadKeyFromRow(lead);
+      const checked = triageCheckedKeys.has(key) ? 'checked' : '';
+      const confidence = lead['Website Confidence'] || '';
+      const websiteHtml = lead['Website URL']
+        ? `<a href="${escapeHtml(lead['Website URL'])}" target="_blank">Visit</a>${confidence === 'low' ? ' <span class="mismatch-warn" title="Website may not match business">⚠️</span>' : ''}`
+        : '—';
+      return `<tr>
+        <td><input type="checkbox" class="triage-check" data-key="${escapeHtml(key)}" ${checked} /></td>
+        <td>${escapeHtml(lead['Business Name'])}</td>
+        <td>${websiteHtml}</td>
+        <td>${escapeHtml(lead['Email'])}</td>
+        <td><button class="trash-lead-btn triage-trash-btn" data-trash-key="${escapeHtml(key)}">Trash</button></td>
+      </tr>`;
+    })
+    .join('');
+  attachTriageCheckHandlers();
+  attachTriageTrashHandlers();
+}
+
+function renderTriageSocialQueue() {
+  const tbody = document.getElementById('social-queue-body');
+  if (!tbody) return;
+  if (!triagedSocialLeads.length) {
+    tbody.innerHTML = '<tr><td colspan="4">No social-only leads found.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = triagedSocialLeads
+    .map((lead) => {
+      const key = leadKeyFromRow(lead);
+      const ig = (lead['Instagram'] || '').trim();
+      const fb = (lead['Facebook'] || '').trim();
+      const platformHtml = ig
+        ? `<a href="${escapeHtml(ig)}" target="_blank">Instagram</a>`
+        : `<a href="${escapeHtml(fb)}" target="_blank">Facebook</a>`;
+      const dmBody = `Hey ${lead['Business Name'].split(',')[0]} — I checked out your site and made a quick mockup of how it could look cleaner/more modern. Want me to send it over? No pressure at all!`;
+      return `<tr>
+        <td>${escapeHtml(lead['Business Name'])}</td>
+        <td>${lead['Website URL'] ? `<a href="${escapeHtml(lead['Website URL'])}" target="_blank">Visit</a>` : '—'}</td>
+        <td>${platformHtml}</td>
+        <td><button class="copy-dm-btn" data-dm="${escapeHtml(dmBody)}">Copy DM</button>
+            <button class="trash-lead-btn triage-trash-btn" data-trash-key="${escapeHtml(key)}">Trash</button></td>
+      </tr>`;
+    })
+    .join('');
+  attachTriageTrashHandlers();
+  document.querySelectorAll('.copy-dm-btn').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(btn.dataset.dm || '');
+        document.getElementById('triage-send-status').textContent = 'DM copied to clipboard.';
+      } catch {
+        document.getElementById('triage-send-status').textContent = 'Failed to copy.';
+      }
+    });
+  });
+}
+
+function renderTriageSent() {
+  const tbody = document.getElementById('sent-body');
+  const countEl = document.getElementById('sent-count');
+  if (countEl) countEl.textContent = `(${triagedSentLeads.length})`;
+  if (!tbody) return;
+  if (!triagedSentLeads.length) {
+    tbody.innerHTML = '<tr><td colspan="4">No emails sent yet.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = triagedSentLeads
+    .map((record) => {
+      const lead = allLeads.find((l) => leadKeyFromRow(l) === record.key);
+      const name = lead ? lead['Business Name'] : record.key;
+      const sentDate = record.sentAt ? new Date(record.sentAt).toLocaleString() : '';
+      return `<tr>
+        <td>${escapeHtml(name)}</td>
+        <td>${escapeHtml(record.to)}</td>
+        <td>${escapeHtml(record.subject)}</td>
+        <td>${escapeHtml(sentDate)}</td>
+      </tr>`;
+    })
+    .join('');
+}
+
+function attachTriageCheckHandlers() {
+  document.querySelectorAll('.triage-check').forEach((cb) => {
+    cb.addEventListener('change', () => {
+      const key = cb.dataset.key;
+      if (cb.checked) triageCheckedKeys.add(key);
+      else triageCheckedKeys.delete(key);
+    });
+  });
+}
+
+function attachTriageTrashHandlers() {
+  document.querySelectorAll('.triage-trash-btn').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const key = decodeURIComponent(btn.dataset.trashKey || '');
+      const lead = allLeads.find((l) => leadKeyFromRow(l) === key);
+      if (!lead) return;
+      const confirmed = window.confirm(`Trash "${lead['Business Name']}"?`);
+      if (!confirmed) return;
+      try {
+        await fetch('/api/leads/trash', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ businessName: lead['Business Name'], address: lead['Address'] }),
+        });
+        triageCheckedKeys.delete(key);
+        await loadTriageData();
+      } catch (err) {
+        document.getElementById('triage-send-status').textContent = err.message;
+      }
+    });
+  });
 }
 
 function escapeHtml(value) {
@@ -401,7 +570,60 @@ document.querySelectorAll('.tab-btn').forEach((btn) => {
     document.getElementById(`${btn.dataset.tab}-tab`).classList.remove('hidden');
     updateHeaderForTab(btn.dataset.tab);
     if (btn.dataset.tab === 'emails') loadEmails();
+    if (btn.dataset.tab === 'triage') loadTriageData();
   });
+});
+
+const masterCheck = document.getElementById('triage-master-check');
+if (masterCheck) {
+  masterCheck.addEventListener('change', () => {
+    const isChecked = masterCheck.checked;
+    document.querySelectorAll('.triage-check').forEach((cb) => {
+      cb.checked = isChecked;
+      const key = cb.dataset.key;
+      if (isChecked) triageCheckedKeys.add(key);
+      else triageCheckedKeys.delete(key);
+    });
+  });
+}
+
+document.getElementById('triage-select-all')?.addEventListener('click', () => {
+  triageEmailLeads.forEach((l) => triageCheckedKeys.add(leadKeyFromRow(l)));
+  renderTriageEmailQueue();
+});
+
+document.getElementById('triage-deselect-all')?.addEventListener('click', () => {
+  triageCheckedKeys.clear();
+  renderTriageEmailQueue();
+});
+
+document.getElementById('triage-send-all')?.addEventListener('click', async () => {
+  const keys = Array.from(triageCheckedKeys);
+  if (!keys.length) {
+    document.getElementById('triage-send-status').textContent = 'No leads selected.';
+    return;
+  }
+  const btn = document.getElementById('triage-send-all');
+  btn.disabled = true;
+  const statusEl = document.getElementById('triage-send-status');
+  statusEl.textContent = `Sending ${keys.length} email(s)... (3s between each)`;
+  try {
+    const res = await fetch('/api/leads/send-batch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ leadKeys: keys }),
+    });
+    const { results } = await res.json();
+    const succeeded = results.filter((r) => r.success).length;
+    const failed = results.filter((r) => !r.success);
+    triageCheckedKeys.clear();
+    await loadTriageData();
+    statusEl.textContent = `Done. ${succeeded} sent.${failed.length ? ` ${failed.length} failed: ${failed.map((f) => f.error).join(', ')}` : ''}`;
+  } catch (err) {
+    statusEl.textContent = `Send failed: ${err.message}`;
+  } finally {
+    btn.disabled = false;
+  }
 });
 
 document.getElementById('search').addEventListener('input', applyFiltersAndSort);
@@ -478,9 +700,10 @@ document.getElementById('emails-content').addEventListener('click', async (event
   }
 });
 
-Promise.all([loadLeads(), loadEmailDrafts()]).then(() => {
+Promise.all([loadTriageData(), loadEmailDrafts()]).then(() => {
   applyFiltersAndSort();
   renderEmailWorkspace();
 });
-updateHeaderForTab('logs');
+updateHeaderForTab('triage');
 loadRunStatus();
+checkGmailAuthStatus();

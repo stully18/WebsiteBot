@@ -17,7 +17,8 @@
         <p>Pipeline Command Center</p>
       </div>
       <nav class="side-nav">
-        <button class="tab-btn active" data-tab="logs">Live Logs</button>
+        <button class="tab-btn active" data-tab="triage">Triage &amp; Send</button>
+        <button class="tab-btn" data-tab="logs">Live Logs</button>
         <button class="tab-btn" data-tab="leads">Leads Database</button>
         <button class="tab-btn" data-tab="emails">Email Drafts</button>
       </nav>
@@ -35,7 +36,78 @@
         </div>
       </header>
 
-      <section id="logs-tab" class="tab-content active">
+      <section id="triage-tab" class="tab-content">
+        <div class="section-head triage-head">
+          <h3>Triage &amp; Send</h3>
+          <div class="triage-auth-status" id="triage-auth-status"></div>
+        </div>
+
+        <div class="triage-panel">
+          <div class="triage-queue-header">
+            <h4>Email Queue</h4>
+            <div class="triage-controls">
+              <button id="triage-select-all" type="button">Select All</button>
+              <button id="triage-deselect-all" type="button">Deselect All</button>
+              <button id="triage-send-all" type="button" class="send-all-btn">Send All Selected</button>
+            </div>
+          </div>
+          <p id="triage-send-status" class="triage-status-msg"></p>
+          <table class="triage-table" id="email-queue-table">
+            <thead>
+              <tr>
+                <th><input type="checkbox" id="triage-master-check" /></th>
+                <th>Business</th>
+                <th>Website</th>
+                <th>Email</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="email-queue-body">
+              <tr><td colspan="5">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="triage-panel triage-social-panel">
+          <div class="triage-queue-header">
+            <h4>Social Queue <span class="queue-sub">(no email found — DM only)</span></h4>
+          </div>
+          <table class="triage-table" id="social-queue-table">
+            <thead>
+              <tr>
+                <th>Business</th>
+                <th>Website</th>
+                <th>Platform</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="social-queue-body">
+              <tr><td colspan="4">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="triage-panel triage-sent-panel">
+          <div class="triage-queue-header">
+            <h4>Sent <span class="queue-sub" id="sent-count">(0)</span></h4>
+          </div>
+          <table class="triage-table" id="sent-table">
+            <thead>
+              <tr>
+                <th>Business</th>
+                <th>Email Sent To</th>
+                <th>Subject</th>
+                <th>Sent At</th>
+              </tr>
+            </thead>
+            <tbody id="sent-body">
+              <tr><td colspan="4">No emails sent yet.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="logs-tab" class="tab-content hidden">
         <div class="logs-top">
           <div id="run-controls">
             <button id="run-pipeline-btn">Source Leads + Websites</button>
