@@ -347,6 +347,33 @@ function createApp(outputDir, options = {}) {
     return res.json({ results });
   });
 
+  app.get('/auth/gmail', (req, res) => {
+    try {
+      const { getAuthUrl } = require('../utils/gmail-auth');
+      const url = getAuthUrl();
+      res.redirect(url);
+    } catch (err) {
+      res.status(500).send(`Gmail auth error: ${err.message}`);
+    }
+  });
+
+  app.get('/auth/gmail/callback', async (req, res) => {
+    const code = req.query.code;
+    if (!code) return res.status(400).send('Missing auth code.');
+    try {
+      const { exchangeCode } = require('../utils/gmail-auth');
+      await exchangeCode(code);
+      res.send('<h2>Gmail connected! You can close this tab and return to the dashboard.</h2>');
+    } catch (err) {
+      res.status(500).send(`Failed to exchange token: ${err.message}`);
+    }
+  });
+
+  app.get('/api/auth/gmail/status', (req, res) => {
+    const { isAuthenticated } = require('../utils/gmail-auth');
+    res.json({ authenticated: isAuthenticated() });
+  });
+
   app.post('/api/send-email', async (req, res) => {
     const to = (req.body?.to || '').trim();
     const subject = (req.body?.subject || '').trim();
