@@ -334,3 +334,103 @@ describe('pipeline run endpoints', () => {
     expect(res.body.error).toContain('Invalid mode');
   });
 });
+
+describe('GET /api/leads/sent', () => {
+  it('returns empty array when sent-leads.json does not exist', async () => {
+    const app = createApp(TEST_DIR);
+    const res = await request(app).get('/api/leads/sent');
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual([]);
+  });
+
+  it('returns array of sent lead records', async () => {
+    const sentPath = path.join(TEST_DIR, 'sent-leads.json');
+    fs.writeFileSync(
+      sentPath,
+      JSON.stringify([{ key: "joe's pizza|princeton nj", sentAt: '2026-04-20T10:00:00Z', to: 'joe@pizza.com', subject: 'Hi' }])
+    );
+    const app = createApp(TEST_DIR);
+    const res = await request(app).get('/api/leads/sent');
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(1);
+    expect(res.body[0].key).toBe("joe's pizza|princeton nj");
+    fs.unlinkSync(sentPath);
+  });
+});
+
+describe('POST /api/leads/send-batch', () => {
+  beforeEach(() => {
+    const csvPath = path.join(TEST_DIR, 'leads.csv');
+    fs.writeFileSync(
+      csvPath,
+      "Business Name,Address,Phone,Website URL,Website Quality,Google Maps Link,Email,Instagram,Facebook\nJoe's Pizza,Princeton NJ,6095551234,http://joespizza.com,poor,https://maps.google.com/1,owner@joespizza.com,,\n"
+    );
+  });
+
+  afterEach(() => {
+    const sentPath = path.join(TEST_DIR, 'sent-leads.json');
+    if (fs.existsSync(sentPath)) fs.unlinkSync(sentPath);
+  });
+
+  it('sends emails for given lead keys and returns results', async () => {
+    const mockGenerateDraft = jest.fn().mockResolvedValue({
+      businessName: "Joe's Pizza",
+      address: 'Princeton NJ',
+      draftKind: 'email',
+      subject: 'Website idea',
+      body: 'Hi there!',
+    });
+    const mockSendGmailMessage = jest.fn().mockResolvedValue({});
+    const mockGetGmailSignature = jest.fn().mockResolvedValue('<b>Shane</b>');
+    const app = createApp(TEST_DIR, {
+      generateDraftForLead: mockGenerateDraft,
+      sendGmailMessage: mockSendGmailMessage,
+      getGmailSignature: mockGetGmailSignature,
+    });
+
+    const res = await request(app)
+      .post('/api/leads/send-batch')
+      .send({ leadKeys: ["joe's pizza|princeton nj"] });
+
+    expect(res.status).toBe(200);
+    expect(res.body.results).toHaveLength(1);
+    expect(res.body.results[0].success).toBe(true);
+    expect(mockSendGmailMessage).toHaveBeenCalledWith({
+      to: 'owner@joespizza.com',
+      subject: 'Website idea',
+      textBody: 'Hi there!',
+      htmlSignature: '<b>Shane</b>',
+    });
+  });
+
+  it('returns 400 when leadKeys is missing or empty', async () => {
+    const app = createApp(TEST_DIR);
+    const res = await request(app).post('/api/leads/send-batch').send({});
+    expect(res.status).toBe(400);
+  });
+
+  it('marks failed sends in results without crashing the batch', async () => {
+    const mockGenerateDraft = jest.fn().mockResolvedValue({
+      businessName: "Joe's Pizza",
+      address: 'Princeton NJ',
+      draftKind: 'email',
+      subject: 'Website idea',
+      body: 'Hi',
+    });
+    const mockSendGmailMessage = jest.fn().mockRejectedValue(new Error('SMTP failure'));
+    const mockGetGmailSignature = jest.fn().mockResolvedValue('');
+    const app = createApp(TEST_DIR, {
+      generateDraftForLead: mockGenerateDraft,
+      sendGmailMessage: mockSendGmailMessage,
+      getGmailSignature: mockGetGmailSignature,
+    });
+
+    const res = await request(app)
+      .post('/api/leads/send-batch')
+      .send({ leadKeys: ["joe's pizza|princeton nj"] });
+
+    expect(res.status).toBe(200);
+    expect(res.body.results[0].success).toBe(false);
+    expect(res.body.results[0].error).toContain('SMTP failure');
+  });
+});

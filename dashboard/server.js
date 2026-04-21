@@ -73,6 +73,20 @@ function writeTrashedLeadKeys(trashedLeadsPath, keys) {
   fs.writeFileSync(trashedLeadsPath, JSON.stringify(Array.from(new Set(keys)).sort(), null, 2), 'utf8');
 }
 
+function readSentLeads(sentPath) {
+  if (!fs.existsSync(sentPath)) return [];
+  try {
+    const data = JSON.parse(fs.readFileSync(sentPath, 'utf8'));
+    return Array.isArray(data) ? data : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeSentLeads(sentPath, leads) {
+  fs.writeFileSync(sentPath, JSON.stringify(leads, null, 2), 'utf8');
+}
+
 function readEmailDrafts(draftsPath) {
   if (!fs.existsSync(draftsPath)) return [];
   try {
@@ -103,6 +117,19 @@ function createApp(outputDir, options = {}) {
     ((businessName, address, websiteQuality, kind) =>
       generateOutreachDraft(businessName, address, websiteQuality, kind));
   const writeEmailsFile = options.writeEmailsFile || writeEmails;
+  const sendGmailMessage =
+    options.sendGmailMessage ||
+    (async ({ to, subject, textBody, htmlSignature }) => {
+      const { sendEmail } = require('../utils/gmail-sender');
+      return sendEmail({ to, subject, textBody, htmlSignature });
+    });
+  const getGmailSignature =
+    options.getGmailSignature ||
+    (async () => {
+      const { getSignature } = require('../utils/gmail-sender');
+      return getSignature();
+    });
+  const sentLeadsPath = path.join(outputDir, 'sent-leads.json');
   const sendMail =
     options.sendMail ||
     (async ({ to, subject, body }) => {
@@ -241,6 +268,83 @@ function createApp(outputDir, options = {}) {
 
   app.get('/api/run-status', (req, res) => {
     res.json(runState);
+  });
+
+  app.get('/api/leads/sent', (req, res) => {
+    return res.json(readSentLeads(sentLeadsPath));
+  });
+
+  app.post('/api/leads/send-batch', async (req, res) => {
+    const { leadKeys } = req.body || {};
+    if (!Array.isArray(leadKeys) || leadKeys.length === 0) {
+      return res.status(400).json({ error: 'leadKeys must be a non-empty array.' });
+    }
+
+    const csvPath = path.join(outputDir, 'leads.csv');
+    if (!fs.existsSync(csvPath)) {
+      return res.status(404).json({ error: 'leads.csv not found. Run pipeline first.' });
+    }
+
+    const rows = parseCsv(fs.readFileSync(csvPath, 'utf8'));
+    const rowsByKey = new Map(rows.map((r) => [leadKeyFromCsvRow(r), r]));
+    const sentLeads = readSentLeads(sentLeadsPath);
+    const sentKeys = new Set(sentLeads.map((s) => s.key));
+    const trashedKeys = new Set(readTrashedLeadKeys(trashedLeadsPath));
+    const results = [];
+    let signature = null;
+
+    for (let i = 0; i < leadKeys.length; i++) {
+      const key = leadKeys[i];
+      if (sentKeys.has(key)) {
+        results.push({ key, success: false, error: 'Already sent.' });
+        continue;
+      }
+      if (trashedKeys.has(key)) {
+        results.push({ key, success: false, error: 'Lead is trashed.' });
+        continue;
+      }
+      const lead = rowsByKey.get(key);
+      if (!lead) {
+        results.push({ key, success: false, error: 'Lead not found.' });
+        continue;
+      }
+      const to = (lead['Email'] || '').trim();
+      if (!to) {
+        results.push({ key, success: false, error: 'No email address for this lead.' });
+        continue;
+      }
+
+      try {
+        const draft = await generateDraftForLead(
+          lead['Business Name'] || '',
+          lead['Address'] || '',
+          lead['Website Quality'] || '',
+          'email'
+        );
+        if (signature === null) {
+          signature = await getGmailSignature();
+        }
+        await sendGmailMessage({
+          to,
+          subject: draft.subject || '',
+          textBody: draft.body || '',
+          htmlSignature: signature || '',
+        });
+        const sentRecord = { key, sentAt: new Date().toISOString(), to, subject: draft.subject || '' };
+        sentLeads.push(sentRecord);
+        writeSentLeads(sentLeadsPath, sentLeads);
+        sentKeys.add(key);
+        results.push({ key, success: true });
+      } catch (err) {
+        results.push({ key, success: false, error: err.message });
+      }
+
+      if (i < leadKeys.length - 1) {
+        await new Promise((r) => setTimeout(r, 3000));
+      }
+    }
+
+    return res.json({ results });
   });
 
   app.post('/api/send-email', async (req, res) => {
