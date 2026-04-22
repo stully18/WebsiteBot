@@ -6,6 +6,7 @@ const { spawn } = require('child_process');
 const nodemailer = require('nodemailer');
 const { generateOutreachDraft } = require('../generators/email-generator');
 const { writeEmails } = require('../utils/output-writer');
+const { ensureUserConfig, DEFAULT_CONFIG, USER_CONFIG_PATH } = require('../config');
 
 function parseCsv(content) {
   const lines = content.trim().split('\n');
@@ -98,6 +99,7 @@ function readEmailDrafts(draftsPath) {
 }
 
 function createApp(outputDir, options = {}) {
+  ensureUserConfig();
   const app = express();
   const projectRoot = options.projectRoot || path.join(__dirname, '..');
   const runPipeline =
@@ -265,6 +267,31 @@ function createApp(outputDir, options = {}) {
     fs.writeFileSync(draftsPath, JSON.stringify(mergedDrafts, null, 2), 'utf8');
     writeEmailsFile(path.join(outputDir, 'emails.md'), mergedDrafts);
     return res.status(201).json(draft);
+  });
+
+  app.get('/api/config', (req, res) => {
+    ensureUserConfig();
+    try {
+      const config = JSON.parse(fs.readFileSync(USER_CONFIG_PATH, 'utf8'));
+      return res.json(config);
+    } catch {
+      return res.json(DEFAULT_CONFIG);
+    }
+  });
+
+  app.post('/api/config', (req, res) => {
+    try {
+      const incoming = req.body || {};
+      let existing = DEFAULT_CONFIG;
+      if (fs.existsSync(USER_CONFIG_PATH)) {
+        try { existing = JSON.parse(fs.readFileSync(USER_CONFIG_PATH, 'utf8')); } catch { /* keep default */ }
+      }
+      const merged = { ...existing, ...incoming };
+      fs.writeFileSync(USER_CONFIG_PATH, JSON.stringify(merged, null, 2), 'utf8');
+      return res.json({ saved: true });
+    } catch (err) {
+      return res.status(500).json({ error: err.message });
+    }
   });
 
   app.get('/api/run-status', (req, res) => {

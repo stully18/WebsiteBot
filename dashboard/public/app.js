@@ -9,10 +9,11 @@ let triageCheckedKeys = new Set();
 let triagedSocialLeads = [];
 
 const tabHeaderMeta = {
-  triage: { eyebrow: 'Outreach', title: 'Triage & Send' },
-  logs: { eyebrow: 'Pipeline', title: 'Live Logs' },
-  leads: { eyebrow: 'Database', title: 'Leads Database' },
-  emails: { eyebrow: 'Outreach', title: 'Email Drafts' },
+  triage:   { eyebrow: 'Outreach',  title: 'Triage & Send' },
+  logs:     { eyebrow: 'Pipeline',  title: 'Live Logs' },
+  leads:    { eyebrow: 'Database',  title: 'Leads Database' },
+  emails:   { eyebrow: 'Outreach',  title: 'Email Drafts' },
+  settings: { eyebrow: 'Config',    title: 'Settings' },
 };
 
 function leadKeyFromRow(lead) {
@@ -592,6 +593,179 @@ function updateHeaderForTab(tab) {
   if (titleEl) titleEl.textContent = meta.title;
 }
 
+// ─── Settings ───────────────────────────────────────────────────────────────
+
+async function fetchConfig() {
+  const res = await fetch('/api/config');
+  return res.json();
+}
+
+async function patchConfig(partial) {
+  const current = await fetchConfig();
+  const merged = { ...current, ...partial };
+  const res = await fetch('/api/config', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(merged),
+  });
+  return res.json();
+}
+
+function showStatus(elId, message, isError = false) {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  el.textContent = message;
+  el.className = 'settings-status' + (isError ? ' error' : '');
+  setTimeout(() => { el.textContent = ''; el.className = 'settings-status'; }, 3000);
+}
+
+async function loadSettingsTab() {
+  let config;
+  try {
+    config = await fetchConfig();
+  } catch {
+    showStatus('cfg-search-status', 'Failed to load config.', true);
+    return;
+  }
+
+  // Location
+  const locEl = document.getElementById('cfg-location');
+  if (locEl) locEl.value = config.location?.query || '';
+
+  // Radius slider
+  const radiusEl = document.getElementById('cfg-radius');
+  const radiusLabel = document.getElementById('cfg-radius-label');
+  if (radiusEl) {
+    radiusEl.value = config.location?.radiusMiles || 10;
+    if (radiusLabel) radiusLabel.textContent = radiusEl.value;
+  }
+
+  // Categories
+  const active = new Set((config.categories || []).map((c) => c.toLowerCase()));
+  document.querySelectorAll('#cfg-categories input[type="checkbox"]').forEach((cb) => {
+    cb.checked = active.has(cb.value.toLowerCase());
+  });
+
+  // Templates
+  const emailSubj = document.getElementById('tpl-email-subject');
+  const emailBody = document.getElementById('tpl-email-body');
+  const dmBody    = document.getElementById('tpl-dm-body');
+  if (emailSubj) emailSubj.value = config.templates?.email?.subject || '';
+  if (emailBody) emailBody.value = config.templates?.email?.body || '';
+  if (dmBody)    dmBody.value    = config.templates?.dm?.body || '';
+
+  // Profile
+  const proName      = document.getElementById('pro-name');
+  const proRole      = document.getElementById('pro-role');
+  const proPortfolio = document.getElementById('pro-portfolio');
+  if (proName)      proName.value      = config.outreach?.name || '';
+  if (proRole)      proRole.value      = config.outreach?.role || '';
+  if (proPortfolio) proPortfolio.value = config.outreach?.portfolio || '';
+}
+
+function readSearchConfig() {
+  const location = {
+    query: (document.getElementById('cfg-location')?.value || '').trim(),
+    radiusMiles: Number(document.getElementById('cfg-radius')?.value || 10),
+  };
+  const categories = Array.from(
+    document.querySelectorAll('#cfg-categories input[type="checkbox"]:checked')
+  ).map((cb) => cb.value);
+  return { location, categories };
+}
+
+function readTemplateConfig() {
+  return {
+    templates: {
+      email: {
+        subject: (document.getElementById('tpl-email-subject')?.value || '').trim(),
+        body:    (document.getElementById('tpl-email-body')?.value || '').trim(),
+      },
+      dm: {
+        body: (document.getElementById('tpl-dm-body')?.value || '').trim(),
+      },
+    },
+  };
+}
+
+function readProfileConfig() {
+  return {
+    outreach: {
+      name:      (document.getElementById('pro-name')?.value || '').trim(),
+      role:      (document.getElementById('pro-role')?.value || '').trim(),
+      portfolio: (document.getElementById('pro-portfolio')?.value || '').trim(),
+    },
+  };
+}
+
+// Radius slider live label update
+document.getElementById('cfg-radius')?.addEventListener('input', (e) => {
+  const label = document.getElementById('cfg-radius-label');
+  if (label) label.textContent = e.target.value;
+});
+
+// Save search config only
+document.getElementById('cfg-save-only')?.addEventListener('click', async () => {
+  try {
+    await patchConfig(readSearchConfig());
+    showStatus('cfg-search-status', 'Saved.');
+  } catch {
+    showStatus('cfg-search-status', 'Save failed.', true);
+  }
+});
+
+// Save + run pipeline
+document.getElementById('cfg-save-run')?.addEventListener('click', async () => {
+  const btn = document.getElementById('cfg-save-run');
+  btn.disabled = true;
+  try {
+    await patchConfig(readSearchConfig());
+    const res = await fetch('/api/run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode: 'scrape' }),
+    });
+    if (!res.ok) {
+      const payload = await res.json().catch(() => ({}));
+      throw new Error(payload.error || 'Failed to start pipeline.');
+    }
+    showStatus('cfg-search-status', 'Saved. Pipeline started!');
+    // Switch to logs tab
+    document.querySelector('[data-tab="logs"]')?.click();
+    await loadRunStatus();
+    if (!runStatusInterval) {
+      runStatusInterval = setInterval(loadRunStatus, 1000);
+    }
+  } catch (err) {
+    showStatus('cfg-search-status', err.message, true);
+    btn.disabled = false;
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+// Save templates
+document.getElementById('tpl-save')?.addEventListener('click', async () => {
+  try {
+    await patchConfig(readTemplateConfig());
+    showStatus('cfg-templates-status', 'Templates saved.');
+  } catch {
+    showStatus('cfg-templates-status', 'Save failed.', true);
+  }
+});
+
+// Save profile
+document.getElementById('pro-save')?.addEventListener('click', async () => {
+  try {
+    await patchConfig(readProfileConfig());
+    showStatus('cfg-profile-status', 'Profile saved.');
+  } catch {
+    showStatus('cfg-profile-status', 'Save failed.', true);
+  }
+});
+
+// ─── Tab switcher ────────────────────────────────────────────────────────────
+
 document.querySelectorAll('.tab-btn').forEach((btn) => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('.tab-btn').forEach((b) => b.classList.remove('active'));
@@ -599,8 +773,9 @@ document.querySelectorAll('.tab-btn').forEach((btn) => {
     btn.classList.add('active');
     document.getElementById(`${btn.dataset.tab}-tab`).classList.remove('hidden');
     updateHeaderForTab(btn.dataset.tab);
-    if (btn.dataset.tab === 'emails') loadEmails();
-    if (btn.dataset.tab === 'triage') loadTriageData();
+    if (btn.dataset.tab === 'emails')   loadEmails();
+    if (btn.dataset.tab === 'triage')   loadTriageData();
+    if (btn.dataset.tab === 'settings') loadSettingsTab();
   });
 });
 

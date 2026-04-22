@@ -1,5 +1,5 @@
 const puppeteer = require('puppeteer');
-const { chainKeywords, maxResultsPerTerm } = require('../config');
+const { chainKeywords, loadConfig } = require('../config');
 
 // Google Maps CSS selectors — these may drift as Google updates their UI.
 // If scraper stops working, inspect Maps in DevTools and update these.
@@ -276,6 +276,7 @@ async function scrapeSearchTerm(page, searchTerm) {
 }
 
 async function scrapeLeads(searchTerms) {
+  const { maxResultsPerTerm } = loadConfig();
   const browser = await puppeteer.launch({
     headless: true,
     args: ['--no-sandbox', '--disable-setuid-sandbox'],

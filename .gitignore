@@ -4,3 +4,4 @@ output/leads.csv
 output/emails.md
 output/sent-leads.json
 .credentials/
+user-config.json

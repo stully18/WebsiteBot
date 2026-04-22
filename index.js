@@ -1,7 +1,7 @@
 require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
-const { searchTerms, outputDir, focusFilters } = require('./config');
+const { loadConfig, outputDir, focusFilters } = require('./config');
 const { scrapeLeads, discoverMissingWebsites } = require('./scrapers/google-maps');
 const { scrapeContactInfoBatch } = require('./scrapers/contact-scraper');
 const { writeCsv } = require('./utils/output-writer');
@@ -94,6 +94,7 @@ function mergeLeadsByKey(baseLeads, updatedLeads) {
 }
 
 async function run() {
+  const { searchTerms } = loadConfig();
   console.log('=== WebsiteBot Starting ===\n');
   const start = Date.now();
   const rawLeadsPath = path.join(outputDir, 'raw-leads.json');

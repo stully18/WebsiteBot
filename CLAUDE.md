@@ -10,7 +10,7 @@ Full requirements: [docs/PRD.md](docs/PRD.md)
 lead-agent/
 ├── index.js                  # Orchestrator: runs all pipeline stages
 ├── config.js                 # Search terms, filters, constants
-├── .env                      # GEMINI_API_KEY (never commit)
+├── .env                      # Gmail OAuth credentials (never commit)
 ├── scrapers/
 │   └── google-maps.js        # Puppeteer: scrape Maps, extract business data
 ├── analyzers/
@@ -43,10 +43,14 @@ node dashboard/server.js      # Start dashboard at http://localhost:3000
 
 ## Environment
 
-Create `.env` in the project root:
+Create `.env` in the project root (copy from `.env.example`):
 ```
-GEMINI_API_KEY=your_key_here
+GMAIL_CLIENT_ID=your_client_id
+GMAIL_CLIENT_SECRET=your_client_secret
+GMAIL_REDIRECT_URI=http://localhost:3000/auth/gmail/callback
 ```
+
+User preferences (location, categories, templates, profile) live in `user-config.json` — auto-created by the dashboard on first run.
 
 ## Conventions
 

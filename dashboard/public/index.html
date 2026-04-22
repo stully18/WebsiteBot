@@ -6,7 +6,7 @@
   <title>WebsiteBot Dashboard</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -14,13 +14,14 @@
     <aside class="sidebar">
       <div class="brand">
         <h1>WebsiteBot</h1>
-        <p>Pipeline Command Center</p>
+        <p>Lead Generation Engine</p>
       </div>
       <nav class="side-nav">
         <button class="tab-btn active" data-tab="triage">Triage &amp; Send</button>
         <button class="tab-btn" data-tab="logs">Live Logs</button>
         <button class="tab-btn" data-tab="leads">Leads Database</button>
         <button class="tab-btn" data-tab="emails">Email Drafts</button>
+        <button class="tab-btn" data-tab="settings">Settings</button>
       </nav>
       <div class="sidebar-footer">
         <span class="status-dot"></span>
@@ -32,10 +33,11 @@
       <header class="topbar">
         <div>
           <p class="eyebrow" id="topbar-eyebrow">Dashboard</p>
-          <h2 id="topbar-title">Live Logs</h2>
+          <h2 id="topbar-title">Triage &amp; Send</h2>
         </div>
       </header>
 
+      <!-- TRIAGE TAB -->
       <section id="triage-tab" class="tab-content">
         <div class="section-head triage-head">
           <h3>Triage &amp; Send</h3>
@@ -107,6 +109,7 @@
         </div>
       </section>
 
+      <!-- LOGS TAB -->
       <section id="logs-tab" class="tab-content hidden">
         <div class="logs-top">
           <div id="run-controls">
@@ -120,7 +123,7 @@
             </article>
             <article class="metric">
               <span class="metric-label">Mode</span>
-              <p>Scrape -> Discover Websites -> Manual Trash Review</p>
+              <p>Scrape → Discover Websites → Manual Trash Review</p>
             </article>
           </section>
         </div>
@@ -130,6 +133,7 @@
         </div>
       </section>
 
+      <!-- LEADS TAB -->
       <section id="leads-tab" class="tab-content hidden">
         <div class="section-head">
           <h3>Leads Database</h3>
@@ -155,6 +159,7 @@
         </table>
       </section>
 
+      <!-- EMAILS TAB -->
       <section id="emails-tab" class="tab-content hidden">
         <div class="section-head">
           <h3>Email Drafts</h3>
@@ -162,6 +167,109 @@
         </div>
         <div id="emails-content">Loading...</div>
       </section>
+
+      <!-- SETTINGS TAB -->
+      <section id="settings-tab" class="tab-content hidden">
+        <div class="section-head">
+          <h3>Settings</h3>
+          <p>Configure scraping, templates &amp; profile</p>
+        </div>
+
+        <!-- Search Configuration -->
+        <div class="settings-card">
+          <div class="settings-card-title">Search Configuration</div>
+
+          <div class="settings-field">
+            <label for="cfg-location">Location</label>
+            <input type="text" id="cfg-location" placeholder="e.g. Princeton, NJ or 08540" />
+          </div>
+
+          <div class="settings-field">
+            <label for="cfg-radius">Radius: <span id="cfg-radius-label">10</span> miles</label>
+            <input type="range" id="cfg-radius" min="1" max="50" value="10" />
+          </div>
+
+          <div class="settings-field">
+            <label>Business Categories</label>
+            <div class="category-grid" id="cfg-categories">
+              <label class="checkbox-item"><input type="checkbox" value="landscaping" /> Landscaping</label>
+              <label class="checkbox-item"><input type="checkbox" value="general contractor" /> General Contractor</label>
+              <label class="checkbox-item"><input type="checkbox" value="roofing" /> Roofing</label>
+              <label class="checkbox-item"><input type="checkbox" value="plumbing" /> Plumbing</label>
+              <label class="checkbox-item"><input type="checkbox" value="electrician" /> Electrician</label>
+              <label class="checkbox-item"><input type="checkbox" value="hvac" /> HVAC</label>
+              <label class="checkbox-item"><input type="checkbox" value="remodeling" /> Home Remodeling</label>
+              <label class="checkbox-item"><input type="checkbox" value="masonry" /> Masonry</label>
+              <label class="checkbox-item"><input type="checkbox" value="painting" /> Painting</label>
+              <label class="checkbox-item"><input type="checkbox" value="flooring" /> Flooring</label>
+            </div>
+          </div>
+
+          <div class="settings-actions">
+            <button class="btn-primary" id="cfg-save-run">Save &amp; Run Pipeline</button>
+            <button class="btn-ghost" id="cfg-save-only">Save Only</button>
+            <span class="settings-status" id="cfg-search-status"></span>
+          </div>
+        </div>
+
+        <!-- Template Editor -->
+        <div class="settings-card">
+          <div class="settings-card-title">Outreach Templates</div>
+          <p class="settings-hint">Variables: <code>{{businessName}}</code> <code>{{shortName}}</code> <code>{{name}}</code> <code>{{role}}</code> <code>{{portfolio}}</code></p>
+
+          <div class="template-grid">
+            <div class="template-panel">
+              <div class="template-panel-label">Email</div>
+              <div class="settings-field">
+                <label for="tpl-email-subject">Subject</label>
+                <input type="text" id="tpl-email-subject" placeholder="Subject line..." />
+              </div>
+              <div class="settings-field">
+                <label for="tpl-email-body">Body</label>
+                <textarea id="tpl-email-body" rows="10" placeholder="Email body..."></textarea>
+              </div>
+            </div>
+
+            <div class="template-panel">
+              <div class="template-panel-label">DM (Instagram / Social)</div>
+              <div class="settings-field">
+                <label for="tpl-dm-body">Message</label>
+                <textarea id="tpl-dm-body" rows="10" placeholder="DM message..."></textarea>
+              </div>
+            </div>
+          </div>
+
+          <div class="settings-actions">
+            <button class="btn-primary" id="tpl-save">Save Templates</button>
+            <span class="settings-status" id="cfg-templates-status"></span>
+          </div>
+        </div>
+
+        <!-- Outreach Profile -->
+        <div class="settings-card">
+          <div class="settings-card-title">Outreach Profile</div>
+          <p class="settings-hint">Used to fill <code>{{name}}</code>, <code>{{role}}</code>, and <code>{{portfolio}}</code> in templates.</p>
+
+          <div class="settings-field">
+            <label for="pro-name">Your Name</label>
+            <input type="text" id="pro-name" placeholder="Jane Smith" />
+          </div>
+          <div class="settings-field">
+            <label for="pro-role">Your Role</label>
+            <input type="text" id="pro-role" placeholder="a freelance web developer" />
+          </div>
+          <div class="settings-field">
+            <label for="pro-portfolio">Portfolio URL</label>
+            <input type="text" id="pro-portfolio" placeholder="yoursite.com" />
+          </div>
+
+          <div class="settings-actions">
+            <button class="btn-primary" id="pro-save">Save Profile</button>
+            <span class="settings-status" id="cfg-profile-status"></span>
+          </div>
+        </div>
+      </section>
+
     </main>
   </div>
 
