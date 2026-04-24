@@ -52,6 +52,11 @@ GMAIL_REDIRECT_URI=http://localhost:3000/auth/gmail/callback
 
 User preferences (location, categories, templates, profile) live in `user-config.json` — auto-created by the dashboard on first run.
 
+## Git
+
+- **Always push to `origin/master`** — never push to `origin/main` or any other branch
+- **No Claude attribution in commits** — never add `Co-Authored-By: Claude` or any Anthropic/AI co-author lines to commit messages
+
 ## Conventions
 
 - **Async/await throughout** — no callback-style code
